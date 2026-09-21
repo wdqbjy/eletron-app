@@ -1,50 +1,72 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import Versions from './components/Versions.vue'
-import CustomTitleBar from './components/CustomTitleBar.vue'
-import BiliSearch from './components/BiliSearch.vue'
-import { userApi } from './apis/system/index'
-
-const code = ref('')
-const winIpc = window as any
-const ipcHandle = (): void => winIpc.electronMyAPI.ipcRenderer.send('ping')
-
-const ipcHandleTest = async () => {
-  const systemInfo = await userApi.getSystemCode();
-  if (systemInfo.code === 200) {
-    code.value = 'data:image/gif;base64,' + systemInfo.data.img
-  }
-  console.log('systemInfo', systemInfo)
-}
-
-onMounted(async () => {})
+import TopBar from './components/TopBar.vue'
+import BottomNav from './components/BottomNav.vue'
+import PlayerBar from './components/PlayerBar.vue'
 </script>
 
 <template>
-  <div>
-    <CustomTitleBar />
-    <img alt="logo" class="logo" src="./assets/electron.svg" />
-    <div class="creator">Powered by electron-vite</div>
-    <img :src="code" alt="" />
-    <div class="text">
-      Build an Electron app with
-      <span class="vue">Vue</span>
-      and
-      <span class="ts">TypeScript</span>
-    </div>
-    <p class="tip">Please try pressing <code>F12</code> to open the devTool</p>
-    <div class="actions">
-      <div class="action">
-        <a href="https://electron-vite.org/" target="_blank" rel="noreferrer">Documentation</a>
-      </div>
-      <div class="action">
-        <a target="_blank" rel="noreferrer" @click="ipcHandle">Send IPC</a>
-      </div>
-      <div class="action">
-        <a target="_blank" rel="noreferrer" @click="ipcHandleTest">Test Serve</a>
-      </div>
-    </div>
-    <Versions />
-    <BiliSearch />
+  <div class="app-root">
+    <TopBar />
+    <main class="app-main">
+      <RouterView />
+    </main>
+    <BottomNav />
+    <!-- 播放器固定在应用最底部，菜单在其上方 -->
+    <PlayerBar />
   </div>
 </template>
+
+<style scoped>
+.app-root {
+  position: relative;
+  height: 100vh;
+  /* 主题色随 data-color 变更：-color-background 负责深/浅，这里叠一层主题色光晕，让背景随所选主题色一起变 */
+  background:
+    radial-gradient(ellipse at 70% 0%, rgba(var(--brand-rgb), 0.22) 0%, transparent 55%),
+    radial-gradient(ellipse at 15% 90%, rgba(var(--brand-rgb), 0.14) 0%, transparent 50%),
+    var(--color-background);
+}
+
+.app-main {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding-top: var(--topbar-height, 44px);
+  padding-bottom: 140px;
+
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent !important;
+}
+
+/* WebKit 滚动条 —— 鼠标在容器上就全条变粉 */
+.app-main::-webkit-scrollbar {
+  width: 10px !important;
+}
+.app-main::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.app-main::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border-radius: 5px !important;
+  border: 2px solid transparent !important;
+  background-clip: padding-box !important;
+  transition: background-color 0.2s ease !important;
+}
+/* 鼠标在滚动容器上的任何位置 → 滑块变粉 */
+.app-main:hover::-webkit-scrollbar-thumb {
+  background: rgba(var(--brand-rgb), 0.85) !important;
+  background-clip: padding-box !important;
+  border: 2px solid transparent !important;
+}
+/* 鼠标精确放在滑块上 → 更深的粉 */
+.app-main::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--brand-rgb), 1) !important;
+  background-clip: padding-box !important;
+  border: 2px solid transparent !important;
+}
+.app-main::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, var(--brand) 0%, var(--brand-2) 100%) !important;
+  background-clip: padding-box !important;
+  border: 2px solid transparent !important;
+}
+</style>

@@ -31,6 +31,8 @@ declare global {
       bilibili: {
         searchMusic: (keyword: string, page?: number, pageSize?: number) => Promise<any>
         getMusicInfo: (bvid: string) => Promise<any>
+        getMusicRegionFeed: (displayId?: number, requestCnt?: number) => Promise<any>
+        getMusicPlayUrl: (bvid: string, cid: number) => Promise<any>
       }
     }
   }

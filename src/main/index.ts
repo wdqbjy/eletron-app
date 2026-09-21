@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, safeStorage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, safeStorage, protocol, net } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -8,6 +8,43 @@ import icon from '../../resources/icon.png?asset'
 import { bilibiliApi } from './services/bilibili'
 import { assertSafeUrl, SecurityError } from './security/ssrf'
 import { nonEmptyString, boundedInt, plainObject, ParamError } from './security/validate'
+
+// ============== B 站音频流代理协议（必须在 app ready 之前注册）==============
+// 渲染层 <audio> 原生请求不会带 B 站 Referer → 音频 CDN 403。主进程用 axios（带正确
+// Referer/UA）把流代理回来，渲染层用 `biliaudio://audio/?u=<编码后的真实地址>` 播放。
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'biliaudio', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+])
+
+/**
+ * 处理 biliaudio:// 媒体请求：把真实音频地址通过主进程拉流（带 B 站 Referer/UA），
+ * 流式返回给渲染层，从而绕过 CDN 防盗链。Range 一并透传以支持进度拖动。
+ */
+function installBiliAudioProtocol(): void {
+  try {
+    protocol.handle('biliaudio', (request) => {
+      try {
+        const params = new URL(request.url).searchParams
+        const audioUrl = params.get('u') || ''
+        if (!/^https?:\/\//.test(audioUrl)) return new Response('bad url', { status: 400 })
+        const headers: Record<string, string> = {
+          'User-Agent': BILIBILI_UA,
+          Referer: 'https://www.bilibili.com/',
+          Origin: 'https://www.bilibili.com'
+        }
+        const range = request.headers.get('range')
+        if (range) headers['Range'] = range
+        // @ts-ignore 双工流需要 duplex（GET 下无实际影响，仅为满足 fetch 类型）
+        return net.fetch(audioUrl, { headers, duplex: 'half' })
+      } catch (err) {
+        console.error('[biliaudio] 代理失败:', err)
+        return new Response('proxy error', { status: 502 })
+      }
+    })
+  } catch (err) {
+    console.error('[biliaudio] 注册协议失败:', err)
+  }
+}
 
 // ============== Token 安全存储（主进程无 localStorage，改用文件 + safeStorage 加密）==============
 const TOKEN_FILE = join(app.getPath('userData'), 'auth_token')
@@ -311,7 +348,13 @@ function setupBilibiliImageHeaders(win: BrowserWindow): void {
   try {
     win.webContents.session.webRequest.onBeforeSendHeaders(
       {
-        urls: ['https://*.hdslb.com/*', 'https://*.bilivideo.com/*', 'https://*.bilivideo.cn/*']
+        // http/https 都拦：封面转 https 后走 https 规则；万一有 raw http 也有兜底 Referer
+        urls: [
+          'https://*.hdslb.com/*',
+          'http://*.hdslb.com/*',
+          'https://*.bilivideo.com/*',
+          'https://*.bilivideo.cn/*'
+        ]
       },
       (details, callback) => {
         details.requestHeaders['Referer'] = 'https://www.bilibili.com/'
@@ -449,6 +492,27 @@ class ElectronMyApp {
         return await bilibiliApi.getMusicInfo(bv)
       } catch (e) {
         console.error('[安全] 拦截 bili:get-music-info', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:region-feed', async (_event, displayId, requestCnt) => {
+      try {
+        const did = boundedInt(displayId, 'displayId', 1, 100000, 1)
+        const cnt = boundedInt(requestCnt, 'requestCnt', 1, 100, 20)
+        return await bilibiliApi.getMusicRegionFeed(did, cnt)
+      } catch (e) {
+        console.error('[安全] 拦截 bili:region-feed', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:get-music-play-url', async (_event, bvid, cid) => {
+      try {
+        const bv = nonEmptyString(bvid, 'bvid', 20)
+        if (!/^BV[0-9A-Za-z]{10,12}$/.test(bv)) throw new ParamError('bvid 格式非法')
+        const c = boundedInt(cid, 'cid', 1, 100000000000)
+        return await bilibiliApi.getMusicPlayUrl(bv, c)
+      } catch (e) {
+        console.error('[安全] 拦截 bili:get-music-play-url', e)
         return toSecurityFailure(e)
       }
     })
@@ -590,6 +654,7 @@ class ElectronMyApp {
 
   public init(): void {
     app.whenReady().then(() => {
+      installBiliAudioProtocol()
       this.createWindow()
 
       app.on('activate', () => {
@@ -626,5 +691,10 @@ class ElectronMyApp {
 
 
 // 启动应用
+// ============ 关闭 Windows/Chromium 的 overlay scrollbar ============
+// overlay scrollbar 使用原生合成层渲染，会覆盖 ::-webkit-scrollbar CSS 伪元素的 hover 效果
+// 关闭后滚动条走标准 WebKit 渲染，CSS 规则才能正常生效
+app.commandLine.appendSwitch('disable-features', 'OverlayScrollbar')
+
 const electronMyApp = new ElectronMyApp()
 electronMyApp.init()

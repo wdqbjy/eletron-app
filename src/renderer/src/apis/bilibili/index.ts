@@ -37,7 +37,7 @@ export interface BiliSearchResponse {
   }
 }
 
-// 经 preload 的 contextBridge 注入；node/main 类型作用域里 window 无该全局声明，故走 any（同 utils/request.ts 惯例）
+// 经 preload 的 contextBridge 注入；node/main 类型作用域里 window 无该全局声明，故走 any
 const api = (window as any).electronMyAPI.bilibili
 
 /** 全站搜索音乐：主进程透传的正是 B 站 payload，类型即 BiliSearchResponse */
@@ -54,4 +54,48 @@ export async function getMusicInfo(
   bvid: string
 ): Promise<{ code: number; message: string; data?: any }> {
   return api.getMusicInfo(bvid)
+}
+
+/** 首页「推荐音乐」卡片（// x/web-interface/region/feed/rcmd archives[] 格式化后，对应 pink-music） */
+export interface RecommendedMusic {
+  bvid: string
+  aid: number
+  cid?: number
+  title: string
+  author: string
+  cover: string
+  duration: number
+  playCount: number
+  pubdate: number
+  rec_reason: string
+}
+
+/** /x/web-interface/region/feed/rcmd 响应 —— B 站原始 payload */
+export interface BiliRegionResponse {
+  code: number
+  message: string
+  ttl?: number
+  data?: {
+    archives?: any[]
+  }
+}
+
+/** 音乐区推荐：B 站主进程透传的正是原始 payload */
+export async function getMusicRegionFeed(
+  displayId = 1,
+  requestCnt = 20
+): Promise<BiliRegionResponse> {
+  return api.getMusicRegionFeed(displayId, requestCnt)
+}
+
+/** /x/player/playurl 响应 —— B 站原始 payload（data 含 dash / durl 音频流） */
+export interface MusicPlayurlResponse {
+  code: number
+  message: string
+  data?: any
+}
+
+/** 获取真实播放地址：主进程透传 B 站原始 payload，渲染层再用 selectAudioUrl 择优 */
+export async function getMusicPlayUrl(bvid: string, cid: number): Promise<MusicPlayurlResponse> {
+  return api.getMusicPlayUrl(bvid, cid)
 }

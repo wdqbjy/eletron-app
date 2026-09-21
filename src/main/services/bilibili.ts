@@ -77,6 +77,46 @@ class BilibiliApi {
       return { code: -1, message: err.message }
     }
   }
+
+  /**
+   * 播放地址：GET /x/player/playurl（DASH，fnval=4048）
+   * 供真实音频播放使用：返回 dash 音频流 / durl 分段流，由渲染层 selectAudioUrl 择优。
+   */
+  async getMusicPlayUrl(bvid: string, cid: number): Promise<any> {
+    try {
+      const resp = await this.axios.get(`${BILIBILI_BASE}/x/player/playurl`, {
+        params: { bvid, cid, qn: 0, fnval: 4048, fnver: 0, fourk: 1 }
+      })
+      return resp.data
+    } catch (err: any) {
+      console.error('[Bilibili] 获取播放地址失败:', err.message)
+      return { code: -1, message: err.message }
+    }
+  }
+
+  /**
+   * 音乐区推荐：GET /x/web-interface/region/feed/rcmd
+   * B 站音乐区（tid=1003）的推荐视频流，比全站搜索更贴合“推荐音乐”。
+   * @returns B 站原始 payload：{ code, message, data:{ archives:[...] } }
+   */
+  async getMusicRegionFeed(displayId = 1, requestCnt = 20): Promise<any> {
+    try {
+      const resp = await this.axios.get(`${BILIBILI_BASE}/x/web-interface/region/feed/rcmd`, {
+        params: {
+          display_id: displayId,
+          request_cnt: requestCnt,
+          from_region: 1003, // 音乐区
+          device: 'web',
+          plat: 30,
+          web_location: '333.40138'
+        }
+      })
+      return resp.data
+    } catch (err: any) {
+      console.error('[Bilibili] 音乐区推荐失败:', err.message)
+      return { code: -1, message: err.message }
+    }
+  }
 }
 
 export const bilibiliApi = new BilibiliApi()

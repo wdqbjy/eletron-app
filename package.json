@@ -25,7 +25,8 @@
     "@electron-toolkit/utils": "^4.0.0",
     "axios": "^1.13.2",
     "electron-updater": "^6.3.9",
-    "pinia": "^4.0.3"
+    "pinia": "^4.0.3",
+    "vue-router": "^5.3.1"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "3.0.0",

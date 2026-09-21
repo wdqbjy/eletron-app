@@ -67,7 +67,11 @@ const electronMyAPI = {
     searchMusic: (keyword: string, page?: number, pageSize?: number): Promise<any> =>
       ipcRenderer.invoke('bili:search-music', keyword, page, pageSize),
     getMusicInfo: (bvid: string): Promise<any> =>
-      ipcRenderer.invoke('bili:get-music-info', bvid)
+      ipcRenderer.invoke('bili:get-music-info', bvid),
+    getMusicRegionFeed: (displayId?: number, requestCnt?: number): Promise<any> =>
+      ipcRenderer.invoke('bili:region-feed', displayId, requestCnt),
+    getMusicPlayUrl: (bvid: string, cid: number): Promise<any> =>
+      ipcRenderer.invoke('bili:get-music-play-url', bvid, cid)
   },
 }
 

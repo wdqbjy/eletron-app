@@ -3,14 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <title>Electron</title>
-    <!-- CSP：渲染层零网络能力，故 connect-src 只放 dev 的 Vite HMR WebSocket；
-         图片放行 B 站图床(hdslb.com)。script-src 严格 'self'，禁内联脚本。 -->
+    <!-- CSP：渲染层零网络能力，故 connect-src 只放 dev 的 Vite HMR WebSocket。
+         img-src 放开到 https:/http: —— 封面来自 B 站图床；media-src 额外允许主进程代理协议 biliaudio:
+         —— 音频经主进程拉流（绕过 CDN 防盗链），其余仍严格。 -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self';
                script-src 'self';
                style-src 'self' 'unsafe-inline';
-               img-src 'self' data: https://*.hdslb.com;
+               img-src 'self' data: https: http:;
+               media-src 'self' data: blob: https: http: biliaudio:;
                connect-src 'self' ws://localhost:*;
                font-src 'self' data:;
                object-src 'none';

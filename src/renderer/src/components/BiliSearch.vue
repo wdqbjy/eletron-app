@@ -86,11 +86,11 @@ const autoLoad = async () => {
 }
 .bar .ghost {
   background: transparent;
-  border: 1px solid #7f7f7f;
+  border: 1px solid var(--ev-c-gray-2);
   color: inherit;
 }
 .note {
-  color: #b0b0b0;
+  color: var(--ev-c-text-3);
   font-size: 12px;
 }
 .list {
@@ -103,14 +103,14 @@ const autoLoad = async () => {
   align-items: center;
   gap: 12px;
   padding: 8px 0;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--ev-c-gray-1);
 }
 .cover {
   width: 64px;
   height: 40px;
   object-fit: cover;
   border-radius: 4px;
-  background: #333;
+  background: var(--color-background-mute);
 }
 .meta {
   flex: 1;
@@ -119,7 +119,7 @@ const autoLoad = async () => {
   font-weight: 600;
 }
 .sub {
-  color: #9a9a9a;
+  color: var(--ev-c-text-2);
   font-size: 12px;
 }
 .link {
