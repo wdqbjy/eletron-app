@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import Versions from './components/Versions.vue'
 import CustomTitleBar from './components/CustomTitleBar.vue'
+import BiliSearch from './components/BiliSearch.vue'
 import { userApi } from './apis/system/index'
 
 const code = ref('')
@@ -44,5 +45,6 @@ onMounted(async () => {})
       </div>
     </div>
     <Versions />
+    <BiliSearch />
   </div>
 </template>

@@ -62,6 +62,13 @@ const electronMyAPI = {
       return undefined
     }
   },
+  // B 站音乐（pink-music 同源示例）：contextBridge 白名单 → ipcRenderer.invoke → ipcMain.handle
+  bilibili: {
+    searchMusic: (keyword: string, page?: number, pageSize?: number): Promise<any> =>
+      ipcRenderer.invoke('bili:search-music', keyword, page, pageSize),
+    getMusicInfo: (bvid: string): Promise<any> =>
+      ipcRenderer.invoke('bili:get-music-info', bvid)
+  },
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

@@ -35,6 +35,10 @@ declare global {
         setToken: (token: string) => Promise<ApiResponse>
       }
       on: (channel: string, callback: (...args: any[]) => void) => (() => void) | undefined
+      bilibili: {
+        searchMusic: (keyword: string, page?: number, pageSize?: number) => Promise<any>
+        getMusicInfo: (bvid: string) => Promise<any>
+      }
     }
   }
 }

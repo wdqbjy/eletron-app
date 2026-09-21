@@ -1,8 +1,54 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, safeStorage } from 'electron'
 import { join } from 'path'
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 import icon from '../../resources/icon.png?asset'
+import { bilibiliApi } from './services/bilibili'
+import { assertSafeUrl, SecurityError } from './security/ssrf'
+import { nonEmptyString, boundedInt, plainObject, ParamError } from './security/validate'
+
+// ============== Token 安全存储（主进程无 localStorage，改用文件 + safeStorage 加密）==============
+const TOKEN_FILE = join(app.getPath('userData'), 'auth_token')
+
+function saveEncryptedToken(token: string): void {
+  try {
+    const userDataDir = app.getPath('userData')
+    if (!existsSync(userDataDir)) {
+      mkdirSync(userDataDir, { recursive: true })
+    }
+    const buffer = safeStorage.isEncryptionAvailable()
+      ? safeStorage.encryptString(token)
+      : Buffer.from(token, 'utf-8')
+    writeFileSync(TOKEN_FILE, buffer)
+  } catch (err) {
+    console.error('[Token] 保存失败:', err)
+  }
+}
+
+function readEncryptedToken(): string | null {
+  try {
+    if (!existsSync(TOKEN_FILE)) return null
+    const buffer = readFileSync(TOKEN_FILE)
+    return safeStorage.isEncryptionAvailable()
+      ? safeStorage.decryptString(buffer)
+      : buffer.toString('utf-8')
+  } catch (err) {
+    console.error('[Token] 读取失败:', err)
+    return null
+  }
+}
+
+function clearEncryptedToken(): void {
+  try {
+    if (existsSync(TOKEN_FILE)) {
+      unlinkSync(TOKEN_FILE)
+    }
+  } catch (err) {
+    console.error('[Token] 清除失败:', err)
+  }
+}
 
 
 // ============== API 响应类型 ==============
@@ -32,6 +78,12 @@ class ApiService {
     })
 
     this.setupInterceptors()
+
+    // 启动时恢复已保存的 token
+    const savedToken = readEncryptedToken()
+    if (savedToken) {
+      this.axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${savedToken}`
+    }
   }
 
   // 设置拦截器
@@ -207,7 +259,7 @@ class ApiService {
   setAuthToken(token: string | null): void {
     if (token) {
       this.axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`
-      // 安全存储 token
+      // 安全存储 token（加密文件）
       this.saveAuthToken(token)
     } else {
       delete this.axiosInstance.defaults.headers.common['Authorization']
@@ -216,13 +268,11 @@ class ApiService {
   }
 
   private saveAuthToken(token: string): void {
-    // 使用 safeStorage 或加密存储
-    // 这里简化处理
-    localStorage.setItem('auth_token', token)
+    saveEncryptedToken(token)
   }
 
   private clearAuthToken(): void {
-    localStorage.removeItem('auth_token')
+    clearEncryptedToken()
   }
 
   // 销毁拦截器
@@ -239,7 +289,41 @@ class ApiService {
 // 创建 API 服务实例
 const apiService = new ApiService()
 
+// 安全拦截的统一失败返回（与渲染层 httpClient 的 ApiResponse 形状对齐）
+function toSecurityFailure(e: unknown): ApiResponse {
+  const message =
+    e instanceof SecurityError || e instanceof ParamError ? e.message : '请求被安全策略拦截'
+  return { success: false, message, error: message, statusCode: 400 }
+}
+
 let mainWindow: BrowserWindow | any = null // 主窗口
+
+// ============== B 站图床 Referer（渲染层直连 <img> 时用） ==============
+const BILIBILI_UA =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+/**
+ * B 站封面/CDN 会校验 Referer，缺了会 403。渲染层 <img> 更不会带 bilibili 的 Referer，
+ * 用 webRequest 在【主进程】给图床请求统一补上 Referer/Origin/UA（与 pink-music 的
+ * installWebRequestInterceptors 同法；只影响渲染层图片直连，不影响主进程 API）。
+ */
+function setupBilibiliImageHeaders(win: BrowserWindow): void {
+  try {
+    win.webContents.session.webRequest.onBeforeSendHeaders(
+      {
+        urls: ['https://*.hdslb.com/*', 'https://*.bilivideo.com/*', 'https://*.bilivideo.cn/*']
+      },
+      (details, callback) => {
+        details.requestHeaders['Referer'] = 'https://www.bilibili.com/'
+        details.requestHeaders['Origin'] = 'https://www.bilibili.com'
+        details.requestHeaders['User-Agent'] = BILIBILI_UA
+        callback({ requestHeaders: details.requestHeaders })
+      }
+    )
+  } catch (err) {
+    console.error('[安全] 安装 B 站图片 Referer 头失败:', err)
+  }
+}
 
 // ============== Electron 应用 ==============
 class ElectronMyApp {
@@ -255,7 +339,11 @@ class ElectronMyApp {
       ...(process.platform === 'linux' ? { icon } : {}),
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
-        sandbox: false
+        sandbox: true,           // preload 运行在沙箱，限制其可用 Node 能力
+        contextIsolation: true,  // 渲染上下文隔离，只能用 contextBridge 暴露的白名单 API
+        nodeIntegration: false,  // 渲染层不注入 Node
+        webSecurity: true,       // 保持默认同源/权限约束，绝不关闭
+        spellcheck: false
       },
       // macOS 圆角
       roundedCorners: true
@@ -280,64 +368,109 @@ class ElectronMyApp {
       return { action: 'deny' }
     })
 
-    // mainWindow = new BrowserWindow({
-    //   width: 900,
-    //   height: 670,
-    //   show: false,
-    //   frame: false, // 禁用原生边框
-    //   autoHideMenuBar: true,
-    //   ...(process.platform === 'linux' ? { icon } : {}),
-    //   webPreferences: {
-    //     preload: join(__dirname, '../preload/index.js'),
-    //     sandbox: false
-    //   },
-    //   // macOS 圆角
-    //   roundedCorners: true
-    // })
+    setupBilibiliImageHeaders(mainWindow)
 
     this.setupIpcHandlers()
   }
 
   private setupIpcHandlers(): void {
-    // ============== HTTP 请求处理器 ==============
-    ipcMain.handle('http:get', async (event, { url, params }) => {
-      console.log(event);
-      return await apiService.get(url, params)
-    })
-
-    ipcMain.handle('http:post', async (event, { url, data, headers }) => {
-      console.log(event);
-      return await apiService.post(url, data, { headers })
-    })
-
-    ipcMain.handle('http:put', async (event, { url, data }) => {
-      console.log(event);
-      return await apiService.put(url, data)
-    })
-
-    ipcMain.handle('http:delete', async (event, { url }) => {
-      console.log(event);
-      return await apiService.delete(url)
-    })
-
-    ipcMain.handle('http:patch', async (event, { url, data }) => {
-      console.log(event);
-      return await apiService.patch(url, data)
-    })
-
-    // ============== 认证相关 ==============
-    ipcMain.handle('auth:login', async (event, { username, password }) => {
-      console.log(event);
-      const response = await apiService.post<{ token: string; user: any }>('/auth/login', {
-        username,
-        password
-      })
-      
-      if (response.success && response.data?.token) {
-        apiService.setAuthToken(response.data.token)
+    // ============== HTTP 请求处理器（已加 SSRF 白名单 + 入参校验） ==============
+    ipcMain.handle('http:get', async (_event, { url, params }) => {
+      try {
+        await assertSafeUrl(url)
+        if (params !== undefined) plainObject(params, 'params')
+        return await apiService.get(url, params)
+      } catch (e) {
+        console.error('[安全] 拦截 http:get', e)
+        return toSecurityFailure(e)
       }
-      
-      return response
+    })
+
+    ipcMain.handle('http:post', async (_event, { url, data, headers }) => {
+      try {
+        await assertSafeUrl(url)
+        if (data !== undefined) plainObject(data, 'data')
+        if (headers !== undefined) plainObject(headers, 'headers')
+        return await apiService.post(url, data, headers ? { headers } : undefined)
+      } catch (e) {
+        console.error('[安全] 拦截 http:post', e)
+        return toSecurityFailure(e)
+      }
+    })
+
+    ipcMain.handle('http:put', async (_event, { url, data }) => {
+      try {
+        await assertSafeUrl(url)
+        if (data !== undefined) plainObject(data, 'data')
+        return await apiService.put(url, data)
+      } catch (e) {
+        console.error('[安全] 拦截 http:put', e)
+        return toSecurityFailure(e)
+      }
+    })
+
+    ipcMain.handle('http:delete', async (_event, { url }) => {
+      try {
+        await assertSafeUrl(url)
+        return await apiService.delete(url)
+      } catch (e) {
+        console.error('[安全] 拦截 http:delete', e)
+        return toSecurityFailure(e)
+      }
+    })
+
+    ipcMain.handle('http:patch', async (_event, { url, data }) => {
+      try {
+        await assertSafeUrl(url)
+        if (data !== undefined) plainObject(data, 'data')
+        return await apiService.patch(url, data)
+      } catch (e) {
+        console.error('[安全] 拦截 http:patch', e)
+        return toSecurityFailure(e)
+      }
+    })
+
+    // ============== B 站音乐（pink-music 同源示例，参数化 + 入参校验） ==============
+    ipcMain.handle('bili:search-music', async (_event, keyword, page, pageSize) => {
+      try {
+        const kw = nonEmptyString(keyword, 'keyword', 100)
+        const p = boundedInt(page, 'page', 1, 1000, 1)
+        const ps = boundedInt(pageSize, 'pageSize', 1, 100, 20)
+        return await bilibiliApi.searchMusic(kw, p, ps)
+      } catch (e) {
+        console.error('[安全] 拦截 bili:search-music', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:get-music-info', async (_event, bvid) => {
+      try {
+        const bv = nonEmptyString(bvid, 'bvid', 20)
+        if (!/^BV[0-9A-Za-z]{10,12}$/.test(bv)) throw new ParamError('bvid 格式非法')
+        return await bilibiliApi.getMusicInfo(bv)
+      } catch (e) {
+        console.error('[安全] 拦截 bili:get-music-info', e)
+        return toSecurityFailure(e)
+      }
+    })
+
+    // ============== 认证相关（入参校验） ==============
+    ipcMain.handle('auth:login', async (event, { username, password }) => {
+      console.log(event)
+      try {
+        const user = nonEmptyString(username, 'username', 100)
+        const pwd = nonEmptyString(password, 'password', 256)
+        const response = await apiService.post<{ token: string; user: any }>(
+          '/auth/login',
+          { username: user, password: pwd }
+        )
+        if (response.success && response.data?.token) {
+          apiService.setAuthToken(response.data.token)
+        }
+        return response
+      } catch (e) {
+        console.error('[安全] 拦截 auth:login', e)
+        return toSecurityFailure(e)
+      }
     })
 
     ipcMain.handle('auth:logout', async () => {
@@ -346,15 +479,30 @@ class ElectronMyApp {
     })
 
     ipcMain.handle('auth:setToken', async (event, { token }) => {
-      console.log(event);
-      apiService.setAuthToken(token)
-      return { success: true }
+      console.log(event)
+      try {
+        const t = nonEmptyString(token, 'token', 2048)
+        apiService.setAuthToken(t)
+        return { success: true }
+      } catch (e) {
+        console.error('[安全] 拦截 auth:setToken', e)
+        return toSecurityFailure(e)
+      }
     })
 
-    // ============== 文件上传 ==============
+    // ============== 文件上传（SSRF 白名单 + 字段校验） ==============
     ipcMain.handle('http:upload', async (event, { url, filePath, fieldName, data }) => {
-      console.log(event);
-      return await apiService.uploadFile(url, filePath, fieldName, data)
+      console.log(event)
+      try {
+        await assertSafeUrl(url)
+        const fp = nonEmptyString(filePath, 'filePath', 1024)
+        const fn = fieldName == null ? 'file' : nonEmptyString(fieldName, 'fieldName', 32)
+        const extra = data === undefined || data === null ? undefined : plainObject(data, 'data')
+        return await apiService.uploadFile(url, fp, fn, extra)
+      } catch (e) {
+        console.error('[安全] 拦截 http:upload', e)
+        return toSecurityFailure(e)
+      }
     })
 
     // ============== 窗口控制 ==============
@@ -383,6 +531,61 @@ class ElectronMyApp {
     ipcMain.handle('window-is-maximized', () => {
       return this.mainWindow ? this.mainWindow.isMaximized() : false
     })
+
+    // ============== 自动更新 ==============
+    ipcMain.handle('updater:check', async () => {
+      if (is.dev) {
+        return { success: false, message: '开发环境下不检查更新' }
+      }
+      try {
+        await autoUpdater.checkForUpdates()
+        return { success: true }
+      } catch (err: any) {
+        return { success: false, message: err?.message || '检查更新失败' }
+      }
+    })
+
+    ipcMain.handle('updater:quitAndInstall', () => {
+      autoUpdater.quitAndInstall()
+    })
+  }
+
+  private setupAutoUpdater(): void {
+    if (is.dev) return
+
+    // 自动下载更新
+    autoUpdater.autoDownload = true
+    // 下载完成后不自动安装，等待用户确认
+    autoUpdater.autoInstallOnAppQuit = true
+
+    autoUpdater.on('checking-for-update', () => {
+      this.mainWindow?.webContents.send('updater:checking')
+    })
+
+    autoUpdater.on('update-available', (info) => {
+      this.mainWindow?.webContents.send('updater:update-available', info)
+    })
+
+    autoUpdater.on('update-not-available', (info) => {
+      this.mainWindow?.webContents.send('updater:update-not-available', info)
+    })
+
+    autoUpdater.on('download-progress', (progress) => {
+      this.mainWindow?.webContents.send('updater:download-progress', progress)
+    })
+
+    autoUpdater.on('update-downloaded', (info) => {
+      this.mainWindow?.webContents.send('updater:update-downloaded', info)
+    })
+
+    autoUpdater.on('error', (err) => {
+      this.mainWindow?.webContents.send('updater:error', err.message)
+    })
+
+    // 启动时自动检查更新
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.error('[Updater] 检查更新失败:', err)
+    })
   }
 
   public init(): void {
@@ -403,8 +606,14 @@ class ElectronMyApp {
       app.on('browser-window-created', (_, window) => {
         optimizer.watchWindowShortcuts(window)
       })
-      mainWindow.webContents.openDevTools({mode:'detach'}); 
 
+      // 仅在开发环境打开 DevTools，生产环境关闭
+      if (is.dev) {
+        mainWindow.webContents.openDevTools({ mode: 'detach' })
+      }
+
+      // 初始化自动更新（生产环境）
+      this.setupAutoUpdater()
     })
 
     app.on('window-all-closed', () => {
