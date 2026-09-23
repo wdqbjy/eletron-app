@@ -163,20 +163,31 @@
             <span class="row-title">大屏播放页频谱可视化</span>
           </div>
           <label class="switch">
-            <input type="checkbox" v-model="visualizerEnabled" />
+            <input
+              type="checkbox"
+              :checked="settingsStore.visualizerEnabled"
+              @change="settingsStore.setVisualizerEnabled(($event.target as HTMLInputElement).checked)"
+            />
             <span class="switch-track"><span class="switch-thumb"></span></span>
           </label>
         </div>
 
-        <div class="setting-row">
+        <div class="setting-row" :class="{ 'is-disabled': !settingsStore.visualizerEnabled }">
           <div class="setting-row-label">
             <span class="row-title">可视化激进度</span>
             <span class="row-desc">控制波形振幅强度、密度、触发阈值</span>
           </div>
           <div class="slider-row">
-            <input type="range" min="0" max="100" v-model="visualizerIntensity" class="slider" />
-            <span class="slider-value">{{ visualizerIntensity }}%</span>
-            <button class="apply-btn">应用</button>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              :value="Math.round(settingsStore.audioVisualizerIntensity * 100)"
+              :disabled="!settingsStore.visualizerEnabled"
+              class="slider"
+              @input="settingsStore.setAudioVisualizerIntensity(Number(($event.target as HTMLInputElement).value) / 100)"
+            />
+            <span class="slider-value">{{ Math.round(settingsStore.audioVisualizerIntensity * 100) }}%</span>
           </div>
         </div>
       </div>
@@ -187,8 +198,10 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { useThemeStore } from '../stores/theme'
+import { useSettingsStore } from '../stores/settings'
 
 const themeStore = useThemeStore()
+const settingsStore = useSettingsStore()
 
 const activeTab = ref<'mine' | 'history' | 'settings'>('mine')
 
@@ -282,10 +295,8 @@ const currentColorLabel = computed(() => {
   return found ? found.label : ''
 })
 
-// 播放设置
+// 播放设置（可视化开关/激进度：唯一来源 = settings store，立即生效并持久化）
 const quality = ref('auto')
-const visualizerEnabled = ref(true)
-const visualizerIntensity = ref(60)
 
 // ============ 事件 ============
 const onActionClick = (key: string): void => {
@@ -647,6 +658,14 @@ const handleLogin = (): void => {
 .row-desc {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.4);
+}
+
+/* 可视化关闭时整行置灰 */
+.setting-row.is-disabled {
+  opacity: 0.45;
+}
+.setting-row.is-disabled .slider {
+  cursor: not-allowed;
 }
 
 /* —— 主题模式 toggle —— */

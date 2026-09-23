@@ -99,3 +99,33 @@ export interface MusicPlayurlResponse {
 export async function getMusicPlayUrl(bvid: string, cid: number): Promise<MusicPlayurlResponse> {
   return api.getMusicPlayUrl(bvid, cid)
 }
+
+/** 歌词响应（网易云匹配） */
+export interface LyricResponse {
+  code: number
+  message?: string
+  data?: string
+  source?: string
+}
+
+/** 为当前曲目自动匹配歌词（主进程按标题/作者搜网易云），data 为合并翻译的 LRC 文本 */
+export async function getLyric(title: string, artist: string): Promise<LyricResponse> {
+  return api.getLyric({ title, artist })
+}
+
+/** 网易云搜索候选歌曲 */
+export interface NeteaseSong {
+  id: number
+  name: string
+  artist: string
+  album: string
+  duration: number
+}
+export async function searchLyric(keyword: string): Promise<NeteaseSong[]> {
+  return api.searchLyric(keyword)
+}
+
+/** 按网易云歌曲 id 取歌词 */
+export async function getLyricById(id: number): Promise<LyricResponse> {
+  return api.getLyricById(id)
+}

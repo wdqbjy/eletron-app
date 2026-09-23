@@ -47,7 +47,9 @@ export const usePlayerStore = defineStore('player', {
     currentTime: 0,
     duration: 0,
     buffered: 0,
-    playMode: 'order' as PlayMode
+    playMode: 'order' as PlayMode,
+    /** 歌词大页是否打开（点播放器封面弹出，对应 pink-music showPlayerPage） */
+    showPlayerPage: false
   }),
   getters: {
     hasCurrent: (s): boolean => !!s.current,
@@ -88,6 +90,10 @@ export const usePlayerStore = defineStore('player', {
     },
     setBuffered(v: number) {
       this.buffered = v
+    },
+    /** 打开/关闭歌词大页 */
+    setShowPlayerPage(v: boolean) {
+      this.showPlayerPage = v
     },
     /** 循环切换播放模式：order → loop → single → shuffle → order */
     togglePlayMode() {

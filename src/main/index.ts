@@ -13,17 +13,31 @@ import { nonEmptyString, boundedInt, plainObject, ParamError } from './security/
 // 渲染层 <audio> 原生请求不会带 B 站 Referer → 音频 CDN 403。主进程用 axios（带正确
 // Referer/UA）把流代理回来，渲染层用 `biliaudio://audio/?u=<编码后的真实地址>` 播放。
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'biliaudio', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+  { scheme: 'biliaudio', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
 ])
 
 /**
  * 处理 biliaudio:// 媒体请求：把真实音频地址通过主进程拉流（带 B 站 Referer/UA），
  * 流式返回给渲染层，从而绕过 CDN 防盗链。Range 一并透传以支持进度拖动。
+ *
+ * 返回前补 CORS 头（Access-Control-Allow-Origin）：渲染层 <audio> 设了 crossOrigin
+ * 以便 Web Audio AnalyserNode 读取频谱（播放特效），跨源媒体必须带 CORS 头否则被
+ * taint 成静音/零数据。
  */
 function installBiliAudioProtocol(): void {
   try {
-    protocol.handle('biliaudio', (request) => {
+    const CORS_HEADERS: Record<string, string> = {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Range, Content-Type, Origin',
+      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+      Vary: 'Origin'
+    }
+    protocol.handle('biliaudio', async (request) => {
       try {
+        // 预检请求：媒体元素一般不发预检，但 fetch 可能触发，兜底返回 204
+        if (request.method === 'OPTIONS') {
+          return new Response(null, { status: 204, headers: CORS_HEADERS })
+        }
         const params = new URL(request.url).searchParams
         const audioUrl = params.get('u') || ''
         if (!/^https?:\/\//.test(audioUrl)) return new Response('bad url', { status: 400 })
@@ -35,10 +49,18 @@ function installBiliAudioProtocol(): void {
         const range = request.headers.get('range')
         if (range) headers['Range'] = range
         // @ts-ignore 双工流需要 duplex（GET 下无实际影响，仅为满足 fetch 类型）
-        return net.fetch(audioUrl, { headers, duplex: 'half' })
+        const upstream = await net.fetch(audioUrl, { headers, duplex: 'half' })
+        // 透传上游 body 与状态（保留 206 / Content-Range 供进度拖动），追加 CORS 头
+        const outHeaders = new Headers(upstream.headers)
+        Object.entries(CORS_HEADERS).forEach(([k, v]) => outHeaders.set(k, v))
+        return new Response(upstream.body, {
+          status: upstream.status,
+          statusText: upstream.statusText,
+          headers: outHeaders
+        })
       } catch (err) {
         console.error('[biliaudio] 代理失败:', err)
-        return new Response('proxy error', { status: 502 })
+        return new Response('proxy error', { status: 502, headers: CORS_HEADERS })
       }
     })
   } catch (err) {
@@ -513,6 +535,35 @@ class ElectronMyApp {
         return await bilibiliApi.getMusicPlayUrl(bv, c)
       } catch (e) {
         console.error('[安全] 拦截 bili:get-music-play-url', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:get-lyric', async (_event, arg) => {
+      try {
+        const o = plainObject(arg, 'arg', ['title', 'artist'])
+        const title = nonEmptyString(o.title, 'title', 200)
+        const artist = typeof o.artist === 'string' ? o.artist.trim().slice(0, 200) : ''
+        return await bilibiliApi.getMusicLyric(title, artist)
+      } catch (e) {
+        console.error('[安全] 拦截 bili:get-lyric', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:search-lyric', async (_event, keyword) => {
+      try {
+        const kw = nonEmptyString(keyword, 'keyword', 100)
+        return await bilibiliApi.searchLyric(kw)
+      } catch (e) {
+        console.error('[安全] 拦截 bili:search-lyric', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:get-lyric-by-id', async (_event, id) => {
+      try {
+        const sid = boundedInt(id, 'id', 1, 9007199254740991)
+        return await bilibiliApi.getLyricById(sid)
+      } catch (e) {
+        console.error('[安全] 拦截 bili:get-lyric-by-id', e)
         return toSecurityFailure(e)
       }
     })

@@ -94,6 +94,106 @@ class BilibiliApi {
     }
   }
 
+  // ============== 歌词（网易云来源，对齐 pink-music electron main.js） ==============
+
+  /** 网易云搜索歌曲：GET /api/search/get */
+  async neteaseSearchMusic(keyword: string, limit = 10): Promise<any[]> {
+    try {
+      const resp = await this.axios.get('https://music.163.com/api/search/get', {
+        params: { s: keyword, type: 1, offset: 0, limit },
+        headers: { Referer: 'https://music.163.com/' }
+      })
+      const songs = resp.data?.result?.songs
+      if (resp.data?.code === 200 && Array.isArray(songs)) {
+        return songs.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          artist: s.artists?.[0]?.name || s.ar?.[0]?.name || '',
+          album: s.album?.name || s.al?.name || '',
+          duration: typeof s.duration === 'number' ? s.duration : 0
+        }))
+      }
+      return []
+    } catch (err: any) {
+      console.error('[Netease] 搜索失败:', err.message)
+      return []
+    }
+  }
+
+  /** 网易云取歌词：GET /api/song/lyric，返回 lrc(+翻译合并为同一行) 字符串 */
+  private async neteaseGetLyricRaw(songId: number): Promise<string | null> {
+    try {
+      const resp = await this.axios.get('https://music.163.com/api/song/lyric', {
+        params: { id: songId, lv: -1, kv: -1, tv: -1 },
+        headers: { Referer: 'https://music.163.com/' }
+      })
+      const data: any = resp.data
+      if (data.code === 200 || resp.status === 200) {
+        const lrc = data.lrc?.lyric || ''
+        const tlyric = data.tlyric?.lyric || ''
+        if (!lrc) return null
+        if (!tlyric) return lrc
+        const tlyricMap: Record<string, string> = {}
+        tlyric.split('\n').forEach((line: string) => {
+          const m = line.match(/\[(\d{2}:\d{2}\.\d{2,3})\](.+)/)
+          if (m) tlyricMap[m[1]] = m[2]
+        })
+        return lrc
+          .split('\n')
+          .map((line: string) => {
+            const m = line.match(/\[(\d{2}:\d{2}\.\d{2,3})\](.+)/)
+            if (m && tlyricMap[m[1]]) return `${line} ${tlyricMap[m[1]]}`
+            return line
+          })
+          .join('\n')
+      }
+      return null
+    } catch (err: any) {
+      console.error('[Netease] 取歌词失败:', err.message)
+      return null
+    }
+  }
+
+  /**
+   * 为 B 站稿件匹配网易云歌词：优先「标题+作者」→「标题」，再按作者/标题粗匹配，取第一首有歌词的。
+   * @returns { code: 0, data: lrc, source: 'netease' } | { code: -1, message }
+   */
+  async getMusicLyric(title: string, artist: string): Promise<any> {
+    const keywords: string[] = []
+    if (title && artist) keywords.push(`${title} ${artist}`)
+    if (title) keywords.push(title)
+    for (const kw of keywords) {
+      const results = await this.neteaseSearchMusic(kw, 10)
+      if (!results.length) continue
+      let matched: any = null
+      if (artist) {
+        const artistMain = artist.split(/[、,，&/\\\s]+/)[0].trim().toLowerCase()
+        matched =
+          results.find(
+            (s: any) =>
+              String(s.artist || '').toLowerCase().includes(artistMain) ||
+              s.name?.toLowerCase() === title?.toLowerCase()
+          ) || null
+      }
+      if (!matched) matched = results[0]
+      const lrc = await this.neteaseGetLyricRaw(matched.id)
+      if (lrc) return { code: 0, data: lrc, source: 'netease' }
+    }
+    return { code: -1, message: '未找到歌词' }
+  }
+
+  /** 手动搜索歌词（搜索面板用）：返回候选歌曲列表 */
+  async searchLyric(keyword: string): Promise<any[]> {
+    return this.neteaseSearchMusic(keyword, 10)
+  }
+
+  /** 按网易云歌曲 id 直接取歌词（搜索面板选中后） */
+  async getLyricById(songId: number): Promise<any> {
+    const lrc = await this.neteaseGetLyricRaw(songId)
+    if (lrc) return { code: 0, data: lrc }
+    return { code: -1, message: '该歌曲无歌词' }
+  }
+
   /**
    * 音乐区推荐：GET /x/web-interface/region/feed/rcmd
    * B 站音乐区（tid=1003）的推荐视频流，比全站搜索更贴合“推荐音乐”。

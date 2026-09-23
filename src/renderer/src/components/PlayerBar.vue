@@ -2,7 +2,12 @@
   <div class="player-bar app-region-no-drag">
     <!-- 左侧：当前歌曲封面 + 信息（结构对应 pink-music AppPlayerBar 的 current-track） -->
     <div class="current-track">
-      <div class="current-cover">
+      <button
+        class="current-cover"
+        title="查看歌词"
+        :disabled="!current"
+        @click="player.setShowPlayerPage(true)"
+      >
         <img
           v-if="current?.cover"
           :src="current.cover"
@@ -11,7 +16,7 @@
           @error="onCoverError"
         />
         <span v-else class="cover-letter">{{ current?.title ? current.title.charAt(0) : '♪' }}</span>
-      </div>
+      </button>
       <div class="current-info">
         <h4 class="title">{{ current?.title || '未在播放' }}</h4>
         <p class="author">{{ subtitle }}</p>
@@ -122,6 +127,7 @@ const onCoverError = (e: Event): void => {
   width: 44px;
   height: 44px;
   border-radius: 8px;
+  border: none;
   background: var(--brand-grad);
   color: #fff;
   font-size: 22px;
@@ -130,6 +136,16 @@ const onCoverError = (e: Event): void => {
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.current-cover:hover:not(:disabled) {
+  transform: scale(1.06);
+  box-shadow: 0 4px 14px rgba(var(--brand-rgb), 0.35);
+}
+.current-cover:disabled {
+  cursor: default;
 }
 
 .cover-img {

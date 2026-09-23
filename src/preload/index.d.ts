@@ -33,6 +33,9 @@ declare global {
         getMusicInfo: (bvid: string) => Promise<any>
         getMusicRegionFeed: (displayId?: number, requestCnt?: number) => Promise<any>
         getMusicPlayUrl: (bvid: string, cid: number) => Promise<any>
+        getLyric: (arg: { title: string; artist: string }) => Promise<any>
+        searchLyric: (keyword: string) => Promise<any>
+        getLyricById: (id: number) => Promise<any>
       }
     }
   }

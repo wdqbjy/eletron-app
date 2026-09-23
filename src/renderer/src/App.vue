@@ -2,6 +2,7 @@
 import TopBar from './components/TopBar.vue'
 import BottomNav from './components/BottomNav.vue'
 import PlayerBar from './components/PlayerBar.vue'
+import PlayerPage from './components/PlayerPage.vue'
 </script>
 
 <template>
@@ -13,6 +14,8 @@ import PlayerBar from './components/PlayerBar.vue'
     <BottomNav />
     <!-- 播放器固定在应用最底部，菜单在其上方 -->
     <PlayerBar />
+    <!-- 歌词大页（点播放器封面弹出） -->
+    <PlayerPage />
   </div>
 </template>
 

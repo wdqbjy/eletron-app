@@ -4,6 +4,7 @@ import { useRecommendStore } from '../stores/recommend'
 import { getMusicInfo, getMusicPlayUrl } from '../apis/bilibili'
 import type { RecommendedMusic } from '../apis/bilibili'
 import { selectAudioUrl } from '../utils/audio'
+import { attachAudioAnalyser } from '../utils/audioAnalyser'
 
 /**
  * 真实音频播放 composable（对齐 pink-music 的 useAudioPlayer.js）
@@ -28,7 +29,11 @@ function getAudio(): HTMLAudioElement {
   if (!audioInstance) {
     audioInstance = new Audio()
     audioInstance.preload = 'metadata'
-    // 不加 crossOrigin：B 站 CDN 未下发 CORS 头，匿名模式会导致解码被拒。我们无需 Web Audio 分析。
+    // 走 biliaudio:// 代理（主进程已补 CORS 头），必须设 crossOrigin 匿名，
+    // 否则 Web Audio AnalyserNode 无法读取频谱（播放特效）。设于任何 src 之前。
+    audioInstance.crossOrigin = 'anonymous'
+    // 首次创建后接到分析器（单例元素只 attach 一次）
+    attachAudioAnalyser(audioInstance)
   }
   return audioInstance
 }
