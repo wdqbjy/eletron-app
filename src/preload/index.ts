@@ -106,6 +106,12 @@ const electronMyAPI = {
       return () => ipcRenderer.removeListener('bili:download-progress', listener)
     }
   },
+  // 应用信息 / 缓存管理（下载设置 / 缓存管理 / 关于卡片）
+  app: {
+    getInfo: (): Promise<any> => ipcRenderer.invoke('app:info'),
+    getCacheSize: (): Promise<any> => ipcRenderer.invoke('app:get-cache-size'),
+    clearCache: (): Promise<any> => ipcRenderer.invoke('app:clear-cache')
+  },
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

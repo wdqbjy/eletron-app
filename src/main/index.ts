@@ -691,6 +691,83 @@ class ElectronMyApp {
       return await downloadService.selectDirectory()
     })
 
+    // ============== 应用信息 / 缓存管理（下载设置-缓存管理-关于卡片数据源） ==============
+
+    /** 应用名 + 版本号（供「关于」卡片展示） */
+    ipcMain.handle('app:info', async () => {
+      return {
+        code: 0,
+        data: {
+          name: 'Dark Music',
+          version: app.getVersion()
+        }
+      }
+    })
+
+    /** 递归累加目录大小（字节），目录不存在/读失败返回 0 */
+    async function calcDirSize(dirPath: string): Promise<number> {
+      try {
+        if (!existsSync(dirPath)) return 0
+        const { readdirSync, statSync } = await import('fs')
+        let total = 0
+        for (const name of readdirSync(dirPath)) {
+          const p = join(dirPath, name)
+          try {
+            const st = statSync(p)
+            total += st.isDirectory() ? await calcDirSize(p) : st.size
+          } catch {
+            /* 单个文件读失败忽略 */
+          }
+        }
+        return total
+      } catch {
+        return 0
+      }
+    }
+
+    /** 统计缓存：userData/downloads + Cache + Code Cache（与下载目录分开，避免误清用户文件） */
+    ipcMain.handle('app:get-cache-size', async () => {
+      try {
+        const userData = app.getPath('userData')
+        const dirs = [
+          join(userData, 'downloads'),
+          join(userData, 'Cache'),
+          join(userData, 'Code Cache')
+        ]
+        let total = 0
+        for (const d of dirs) total += await calcDirSize(d)
+        return { code: 0, size: total }
+      } catch (e: any) {
+        console.error('[cache] get-cache-size failed:', e?.message)
+        return { code: -1, message: e?.message }
+      }
+    })
+
+    /** 清理缓存：userData 下的 downloads / Cache / Code Cache + session 内存缓存 */
+    ipcMain.handle('app:clear-cache', async () => {
+      try {
+        const userData = app.getPath('userData')
+        const { rmSync } = await import('fs')
+        for (const sub of ['downloads', 'Cache', 'Code Cache']) {
+          try {
+            rmSync(join(userData, sub), { recursive: true, force: true })
+          } catch (e: any) {
+            console.warn(`[cache] clear ${sub} failed:`, e?.message)
+          }
+        }
+        try {
+          const { session } = await import('electron')
+          await session.defaultSession.clearCache()
+        } catch (e: any) {
+          console.warn('[cache] clear session cache failed:', e?.message)
+        }
+        return { code: 0 }
+      } catch (e: any) {
+        console.error('[cache] clear-cache failed:', e?.message)
+        return { code: -1, message: e?.message }
+      }
+    })
+
     // ============== 认证相关（入参校验） ==============
     ipcMain.handle('auth:login', async (event, { username, password }) => {
       console.log(event)

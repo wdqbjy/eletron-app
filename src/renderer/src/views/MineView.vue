@@ -300,7 +300,64 @@
         </div>
         <p class="setting-hint">主行始终显示原文，选中的罗马音/翻译以小字附注在原文下方。部分歌曲可能没有罗马音或翻译数据，将自动只显示原文。</p>
       </div>
+
+      <!-- 下载设置 -->
+      <div class="setting-card">
+        <h4 class="setting-card-title">下载设置</h4>
+        <div class="setting-row">
+          <div class="setting-row-label">
+            <span class="row-title">下载目录</span>
+            <span class="row-desc path-text" :title="downloadDirectory">{{ downloadDirectory || '未设置' }}</span>
+          </div>
+          <button class="mini-btn" :disabled="isBrowsingDir" @click="browseDownloadDirectory">
+            {{ isBrowsingDir ? '选择中…' : '浏览' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 缓存管理 -->
+      <div class="setting-card">
+        <h4 class="setting-card-title">缓存管理</h4>
+        <div class="setting-row">
+          <div class="setting-row-label">
+            <span class="row-title">当前缓存大小</span>
+            <span class="row-desc">
+              <template v-if="isCalculatingCache">计算中…</template>
+              <template v-else>{{ formatFileSize(cacheSize) }}</template>
+            </span>
+          </div>
+          <button class="mini-btn btn-danger" :disabled="isClearingCache" @click="showClearCacheConfirm = true">
+            {{ isClearingCache ? '清理中…' : '清理缓存' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- 关于 -->
+      <div class="setting-card">
+        <h4 class="setting-card-title">关于</h4>
+        <div class="setting-row about-row">
+          <div class="about-content">
+            <div class="about-header">
+              <span class="logo-text text-gradient">{{ appInfo.name }}</span>
+              <span class="version" v-if="appInfo.version">v{{ appInfo.version }}</span>
+            </div>
+            <p class="about-desc">一款优雅的 B 站音乐播放器，让你发现并享受喜欢的音乐。</p>
+          </div>
+        </div>
+      </div>
     </template>
+  </div>
+
+  <!-- 清理缓存确认 -->
+  <div v-if="showClearCacheConfirm" class="modal-overlay" @click="showClearCacheConfirm = false">
+    <div class="modal small-modal" @click.stop>
+      <h2>确认清理缓存</h2>
+      <p>清理缓存将删除已缓存的音频、应用临时文件与网络缓存，<b>不会影响你的下载文件</b>，此操作不可恢复。</p>
+      <div class="modal-buttons">
+        <button class="mini-btn" @click="showClearCacheConfirm = false">取消</button>
+        <button class="mini-btn btn-danger" @click="clearCache">确认清理</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -550,6 +607,107 @@ const handleLogout = async (): Promise<void> => {
   } catch (e) {
     console.error('[MineView] 注销失败:', e)
   }
+}
+
+// ============ 下载设置：下载目录（浏览/展示当前路径） ============
+const downloadDirectory = ref('')
+const isBrowsingDir = ref(false)
+
+async function loadDownloadDirectory(): Promise<void> {
+  try {
+    const res = await (window as any).electronMyAPI?.download?.getDirectory?.()
+    if (res?.code === 0 && res?.data) downloadDirectory.value = res.data
+  } catch (e) {
+    console.error('[MineView] 获取下载目录失败:', e)
+  }
+}
+
+async function browseDownloadDirectory(): Promise<void> {
+  if (isBrowsingDir.value) return
+  isBrowsingDir.value = true
+  try {
+    const api = (window as any).electronMyAPI?.download
+    const sel = await api?.selectDirectory?.()
+    if (sel?.code === 0 && sel?.data && !sel.data.canceled && sel.data.path) {
+      const set = await api?.setDirectory?.(sel.data.path)
+      if (set?.code === 0) downloadDirectory.value = sel.data.path
+    }
+  } catch (e) {
+    console.error('[MineView] 选择下载目录失败:', e)
+  } finally {
+    isBrowsingDir.value = false
+  }
+}
+
+// ============ 缓存管理：大小统计 + 清理（含确认弹窗） ============
+const cacheSize = ref(0)
+const isCalculatingCache = ref(false)
+const isClearingCache = ref(false)
+const showClearCacheConfirm = ref(false)
+
+function formatFileSize(bytes: number): string {
+  if (!bytes) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
+}
+
+async function loadCacheSize(): Promise<void> {
+  if (isCalculatingCache.value) return
+  isCalculatingCache.value = true
+  try {
+    const res = await (window as any).electronMyAPI?.app?.getCacheSize?.()
+    if (res?.code === 0) cacheSize.value = res.size || 0
+  } catch (e) {
+    console.error('[MineView] 计算缓存大小失败:', e)
+  } finally {
+    isCalculatingCache.value = false
+  }
+}
+
+async function clearCache(): Promise<void> {
+  if (isClearingCache.value) return
+  isClearingCache.value = true
+  try {
+    const res = await (window as any).electronMyAPI?.app?.clearCache?.()
+    if (res?.code === 0) {
+      // 清理后重新统计，避免 UI 与实际磁盘不符
+      await loadCacheSize()
+    }
+  } catch (e) {
+    console.error('[MineView] 清理缓存失败:', e)
+  } finally {
+    isClearingCache.value = false
+    showClearCacheConfirm.value = false
+  }
+}
+
+// ============ 关于：应用信息 ============
+const appInfo = ref<{ name: string; version: string }>({ name: 'Dark Music', version: '' })
+
+async function loadAppInfo(): Promise<void> {
+  try {
+    const res = await (window as any).electronMyAPI?.app?.getInfo?.()
+    if (res?.code === 0 && res?.data) appInfo.value = res.data
+  } catch (e) {
+    console.error('[MineView] 获取应用信息失败:', e)
+  }
+}
+
+// 进入设置 tab 时按需拉取一次
+watch(activeTab, (tab) => {
+  if (tab === 'settings') {
+    loadDownloadDirectory()
+    loadCacheSize()
+    loadAppInfo()
+  }
+})
+// 如果挂载时已在设置 tab（不太可能但兜底）
+if (activeTab.value === 'settings') {
+  loadDownloadDirectory()
+  loadCacheSize()
+  loadAppInfo()
 }
 </script>
 
@@ -1413,5 +1571,128 @@ const handleLogout = async (): Promise<void> => {
 .light .eq-freq,
 .light .setting-hint {
   color: rgba(40, 40, 46, 0.45);
+}
+
+/* ============ 下载设置 / 缓存管理 / 关于 ============ */
+.path-text {
+  display: block;
+  max-width: 360px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 危险按钮（清理缓存） */
+.btn-danger {
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.35);
+}
+
+.btn-danger:hover:not(:disabled) {
+  color: #fff;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5253 100%);
+  border-color: transparent;
+}
+
+/* 关于卡片（内容直接铺在行容器内） */
+.about-row {
+  align-items: flex-start;
+}
+
+.about-content {
+  min-width: 0;
+}
+
+.about-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.about-header .logo-text {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.about-header .version {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+
+.about-desc {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+/* ============ 确认弹窗 ============ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: rgba(30, 28, 36, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 420px;
+  width: calc(100% - 48px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.modal p {
+  margin: 0 0 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.modal p b {
+  color: var(--brand);
+}
+
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* 浅色模式补充 */
+.light .about-header .version {
+  color: rgba(40, 40, 46, 0.5);
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.light .about-desc {
+  color: rgba(40, 40, 46, 0.55);
+}
+
+.light .modal {
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+}
+
+.light .modal p {
+  color: rgba(40, 40, 46, 0.65);
 }
 </style>

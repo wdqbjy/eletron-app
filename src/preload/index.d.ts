@@ -53,6 +53,11 @@ declare global {
         selectDirectory: () => Promise<any>
         onProgress: (callback: (task: any) => void) => () => void
       }
+      app: {
+        getInfo: () => Promise<any>
+        getCacheSize: () => Promise<any>
+        clearCache: () => Promise<any>
+      }
     }
   }
 }

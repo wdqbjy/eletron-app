@@ -39,6 +39,21 @@ declare global {
         searchMusic: (keyword: string, page?: number, pageSize?: number) => Promise<any>
         getMusicInfo: (bvid: string) => Promise<any>
       }
+      download: {
+        start: (taskInfo: Record<string, any>) => Promise<any>
+        getTasks: () => Promise<any>
+        clearTasks: () => Promise<any>
+        openFolder: () => Promise<any>
+        getDirectory: () => Promise<any>
+        setDirectory: (dirPath: string) => Promise<any>
+        selectDirectory: () => Promise<any>
+        onProgress: (callback: (task: any) => void) => () => void
+      }
+      app: {
+        getInfo: () => Promise<any>
+        getCacheSize: () => Promise<any>
+        clearCache: () => Promise<any>
+      }
     }
   }
 }
