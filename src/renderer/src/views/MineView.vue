@@ -18,23 +18,33 @@
 
     <!-- ==== 我的 Tab ==== -->
     <template v-if="activeTab === 'mine'">
-      <!-- 未登录卡片 -->
+      <!-- 登录卡片：未登录=登录入口；已登录=账号信息 + 退出（登录态与 TopBar 共享 user store） -->
       <div class="login-card">
-        <div class="avatar-large">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
-            <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z"/>
-          </svg>
-        </div>
-        <div class="login-info">
-          <div class="login-status">未登录</div>
-          <div class="login-hint">登录后可同步你的 B 站收藏夹</div>
-        </div>
-        <button class="login-btn" @click="handleLogin">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-          </svg>
-          登录 B 站
-        </button>
+        <template v-if="userStore.isLoggedIn">
+          <div class="avatar-large">{{ avatarText }}</div>
+          <div class="login-info">
+            <div class="login-status">{{ userStore.userInfo?.uname }}</div>
+            <div class="login-hint">已登录 B 站账号 · UID {{ userStore.userInfo?.mid }}</div>
+          </div>
+          <button class="login-btn logout-btn" @click="handleLogout">退出登录</button>
+        </template>
+        <template v-else>
+          <div class="avatar-large">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
+              <path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z"/>
+            </svg>
+          </div>
+          <div class="login-info">
+            <div class="login-status">未登录</div>
+            <div class="login-hint">登录后可同步你的 B 站收藏夹</div>
+          </div>
+          <button class="login-btn" @click="handleLogin">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+            </svg>
+            登录 B 站
+          </button>
+        </template>
       </div>
 
       <!-- 操作卡片组 -->
@@ -50,7 +60,7 @@
           </div>
           <div class="action-text">
             <div class="action-title">{{ item.title }}</div>
-            <div class="action-sub">{{ item.sub }}</div>
+            <div class="action-sub">{{ item.key === 'download' ? downloadSub : item.sub }}</div>
           </div>
         </div>
       </div>
@@ -143,19 +153,13 @@
         <div class="setting-row">
           <div class="setting-row-label">
             <span class="row-title">默认播放音质</span>
+            <span class="row-desc">在线播放与下载共用；无损/杜比需登录账号</span>
           </div>
-          <div class="select-wrap">
-            <select v-model="quality" class="select">
-              <option value="auto">自动（最高可用）</option>
-              <option value="hires">Hi-Res 无损</option>
-              <option value="lossless">无损 FLAC</option>
-              <option value="high">高音质 320K</option>
-              <option value="standard">标准 128K</option>
-            </select>
-            <svg class="select-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-              <polyline points="6 9 12 15 18 9"/>
-            </svg>
-          </div>
+          <AppSelect
+            :model-value="settingsStore.audioQuality"
+            :options="qualityOptions"
+            @update:model-value="settingsStore.setAudioQuality($event as AudioQuality)"
+          />
         </div>
 
         <div class="setting-row">
@@ -182,26 +186,155 @@
               type="range"
               min="0"
               max="100"
-              :value="Math.round(settingsStore.audioVisualizerIntensity * 100)"
+              :value="pendingIntensity"
               :disabled="!settingsStore.visualizerEnabled"
               class="slider"
-              @input="settingsStore.setAudioVisualizerIntensity(Number(($event.target as HTMLInputElement).value) / 100)"
+              @input="pendingIntensity = Number(($event.target as HTMLInputElement).value)"
             />
-            <span class="slider-value">{{ Math.round(settingsStore.audioVisualizerIntensity * 100) }}%</span>
+            <span class="slider-value">{{ pendingIntensity }}%</span>
+            <button
+              class="mini-btn btn-apply"
+              :class="{ 'is-active': intensityDirty }"
+              :disabled="!settingsStore.visualizerEnabled"
+              @click="applyIntensity"
+            >应用</button>
+            <button v-if="intensityDirty" class="mini-btn btn-reset" @click="resetIntensity">撤销</button>
           </div>
         </div>
+      </div>
+
+      <!-- 音频均衡器卡片 -->
+      <div class="setting-card">
+        <h4 class="setting-card-title">音频均衡器</h4>
+
+        <div class="setting-row">
+          <div class="setting-row-label">
+            <span class="row-title">启用均衡器</span>
+            <span class="row-desc">10 段频段调节，立即作用于正在播放的声音</span>
+          </div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              :checked="settingsStore.eqEnabled"
+              @change="settingsStore.setEQEnabled(($event.target as HTMLInputElement).checked)"
+            />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+
+        <div class="eq-body" :class="{ 'is-disabled': !settingsStore.eqEnabled }">
+          <div class="eq-toolbar">
+            <AppSelect
+              :model-value="settingsStore.eqPreset"
+              :options="eqPresetOptions"
+              :disabled="!settingsStore.eqEnabled"
+              @update:model-value="onPresetChange($event)"
+            />
+            <div class="eq-toolbar-actions">
+              <button class="mini-btn btn-secondary" :disabled="!settingsStore.eqEnabled" @click="onResetEQ">重置</button>
+              <button
+                class="mini-btn btn-apply"
+                :class="{ 'is-active': eqDirty }"
+                :disabled="!settingsStore.eqEnabled"
+                @click="applyEQ"
+              >应用</button>
+              <button v-if="eqDirty" class="mini-btn btn-reset" @click="revertEQ">撤销</button>
+            </div>
+          </div>
+
+          <div class="eq-bands">
+            <div v-for="(band, i) in EQ_BANDS" :key="band.freq" class="eq-band">
+              <span class="eq-db" :class="dbClass(pendingBands[i])">{{ formatDb(pendingBands[i]) }}</span>
+              <div class="eq-slider-wrap">
+                <div class="eq-track-zero"></div>
+                <input
+                  type="range"
+                  orient="vertical"
+                  :min="EQ_DB_MIN"
+                  :max="EQ_DB_MAX"
+                  :step="EQ_DB_STEP"
+                  :disabled="!settingsStore.eqEnabled"
+                  :value="pendingBands[i]"
+                  class="eq-slider"
+                  :data-pos="pendingBands[i] > 0 ? 'pos' : pendingBands[i] < 0 ? 'neg' : 'zero'"
+                  @input="onBandInput(i, Number(($event.target as HTMLInputElement).value))"
+                />
+              </div>
+              <span class="eq-freq">{{ band.label }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 窗口设置卡片 -->
+      <div class="setting-card">
+        <h4 class="setting-card-title">窗口设置</h4>
+        <div class="setting-row">
+          <div class="setting-row-label">
+            <span class="row-title">窗口控制按钮</span>
+            <span class="row-desc">在右上角显示最小化、最大化、关闭按钮（macOS 使用系统交通灯）</span>
+          </div>
+          <label class="switch">
+            <input
+              type="checkbox"
+              :checked="settingsStore.windowControlsEnabled"
+              @change="settingsStore.setWindowControlsEnabled(($event.target as HTMLInputElement).checked)"
+            />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 歌词设置卡片 -->
+      <div class="setting-card">
+        <h4 class="setting-card-title">歌词设置</h4>
+        <div class="setting-row">
+          <div class="setting-row-label">
+            <span class="row-title">歌词显示模式</span>
+          </div>
+          <AppSelect
+            :model-value="settingsStore.lyricDisplayMode"
+            :options="lyricModeOptions"
+            @update:model-value="settingsStore.setLyricDisplayMode($event as LyricDisplayMode)"
+          />
+        </div>
+        <p class="setting-hint">主行始终显示原文，选中的罗马音/翻译以小字附注在原文下方。部分歌曲可能没有罗马音或翻译数据，将自动只显示原文。</p>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useThemeStore } from '../stores/theme'
 import { useSettingsStore } from '../stores/settings'
+import type { AudioQuality, LyricDisplayMode } from '../stores/settings'
+import { useDownloadStore } from '../stores/download'
+import { useUserStore } from '../stores/user'
+import { useRecommendStore } from '../stores/recommend'
+import AppSelect from '../components/common/AppSelect.vue'
+import {
+  EQ_BANDS,
+  EQ_DB_MIN,
+  EQ_DB_MAX,
+  EQ_DB_STEP,
+  EQ_PRESET_KEYS,
+  EQ_PRESET_LABELS
+} from '../utils/audioEQ'
 
 const themeStore = useThemeStore()
 const settingsStore = useSettingsStore()
+const downloadStore = useDownloadStore()
+const userStore = useUserStore()
+const recommendStore = useRecommendStore()
+
+// 下载管理卡片副标题：有任务时显示任务数 / 进行中数
+const downloadSub = computed(() => {
+  const total = downloadStore.tasks.length
+  if (!total) return '管理已下载音乐'
+  const active = downloadStore.tasks.filter((t) => t.status === 'downloading' || t.status === 'waiting').length
+  return active > 0 ? `${active} 个下载中 · 共 ${total} 个任务` : `共 ${total} 个任务`
+})
 
 const activeTab = ref<'mine' | 'history' | 'settings'>('mine')
 
@@ -278,8 +411,8 @@ const historyList = ref<HistoryItem[]>([
 ])
 
 // ============ 设置状态 ============
-// 主题模式 + 主题色：唯一来源 = theme store（与顶栏、刷新、全局联动，对齐 pink-music）
-// 主题色（6 色，含 Apple Music，完全照搬 pink-music 色板）
+// 主题模式 + 主题色：唯一来源 = theme store（与顶栏、刷新、全局联动）
+// 主题色（6 色，含 Apple Music）
 const themeColors = [
   { key: 'pink', label: '粉色', color: '#FF69B4' },
   { key: 'purple', label: '紫色', color: '#A855F7' },
@@ -295,13 +428,104 @@ const currentColorLabel = computed(() => {
   return found ? found.label : ''
 })
 
-// 播放设置（可视化开关/激进度：唯一来源 = settings store，立即生效并持久化）
-const quality = ref('auto')
+// ============ 自定义下拉选项 ============
+const qualityOptions = [
+  { value: 'auto', label: '自动（最高可用）' },
+  { value: 'lossless', label: '无损音质' },
+  { value: 'high', label: '高音质' },
+  { value: 'medium', label: '中音质' },
+  { value: 'low', label: '低音质' }
+]
+
+// EQ 预置选项；手动调过滑块时追加「自定义」
+const eqPresetOptions = computed(() => {
+  const list = EQ_PRESET_KEYS.map((key) => ({ value: key, label: EQ_PRESET_LABELS[key] }))
+  if (settingsStore.eqPreset === 'custom' && !list.some((o) => o.value === 'custom')) {
+    list.push({ value: 'custom', label: '自定义' })
+  }
+  return list
+})
+
+const lyricModeOptions = [
+  { value: 'original', label: '原文（无翻译）' },
+  { value: 'romaji', label: '原文 + 罗马音' },
+  { value: 'translation', label: '原文 + 中文翻译' }
+]
+
+// 已登录头像取用户名首字
+const avatarText = computed(() => (userStore.userInfo?.uname || '?').slice(0, 1).toUpperCase())
+
+// ============ 可视化激进度：草稿 + 应用/撤销（draft-apply 交互） ============
+const pendingIntensity = ref(Math.round(settingsStore.audioVisualizerIntensity * 100))
+const intensityDirty = computed(
+  () => pendingIntensity.value !== Math.round(settingsStore.audioVisualizerIntensity * 100)
+)
+function applyIntensity(): void {
+  settingsStore.setAudioVisualizerIntensity(pendingIntensity.value / 100)
+}
+function resetIntensity(): void {
+  pendingIntensity.value = Math.round(settingsStore.audioVisualizerIntensity * 100)
+}
+
+// ============ 均衡器：10 段滑块草稿 + 预置/重置(live) + 应用/撤销 ============
+const pendingBands = ref<number[]>(settingsStore.eqBands.slice())
+const eqDirty = computed(() =>
+  pendingBands.value.some((v, i) => Math.abs(v - settingsStore.eqBands[i]) > 0.001)
+)
+
+// store 值被外部（预置/重置）改写后，同步回草稿
+watch(
+  () => settingsStore.eqBands,
+  (bands) => {
+    pendingBands.value = bands.slice()
+  },
+  { deep: true }
+)
+
+function onBandInput(index: number, value: number): void {
+  // 数组整体替换以触发响应式
+  pendingBands.value = pendingBands.value.map((v, i) => (i === index ? value : v))
+}
+
+/** 预置为 live 动作：立即写入 store/引擎，再同步草稿 */
+function onPresetChange(presetKey: string): void {
+  settingsStore.applyEQPreset(presetKey)
+}
+
+/** 重置为 live 动作：开启 + 平直 0dB */
+function onResetEQ(): void {
+  settingsStore.resetEQ()
+}
+
+/** 提交草稿到 store（立即作用于音频引擎） */
+function applyEQ(): void {
+  if (!eqDirty.value) return
+  settingsStore.commitEQBands(pendingBands.value)
+}
+
+/** 撤销草稿，回到 store 当前值 */
+function revertEQ(): void {
+  pendingBands.value = settingsStore.eqBands.slice()
+}
+
+function formatDb(v: number): string {
+  const n = Math.round(v * 10) / 10
+  if (n > 0) return '+' + n.toFixed(1)
+  if (n < 0) return n.toFixed(1)
+  return '0'
+}
+
+function dbClass(v: number): '' | 'is-pos' | 'is-neg' {
+  if (v > 0) return 'is-pos'
+  if (v < 0) return 'is-neg'
+  return ''
+}
 
 // ============ 事件 ============
 const onActionClick = (key: string): void => {
   if (key === 'history') activeTab.value = 'history'
   else if (key === 'settings') activeTab.value = 'settings'
+  else if (key === 'download') downloadStore.setShowDownloadManager(true)
 }
 
 const clearHistory = (): void => {
@@ -313,8 +537,19 @@ const playHistory = (item: HistoryItem): void => {
   console.log('重新播放:', item.title)
 }
 
+/** 唤起 TopBar 里的扫码登录弹窗（开关在 user store 共享） */
 const handleLogin = (): void => {
-  console.log('登录 B 站')
+  userStore.openLoginModal()
+}
+
+/** 注销：清 cookie + 推荐流回到匿名态，与 TopBar 注销走同一 store */
+const handleLogout = async (): Promise<void> => {
+  try {
+    await userStore.logout()
+    await recommendStore.load()
+  } catch (e) {
+    console.error('[MineView] 注销失败:', e)
+  }
 }
 </script>
 
@@ -445,6 +680,22 @@ const handleLogin = (): void => {
 .login-btn:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 18px rgba(var(--brand-rgb), 0.5);
+}
+
+/* 已登录态的「退出登录」用幽灵按钮，与渐变登录按钮区分 */
+.logout-btn {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: none;
+  flex-shrink: 0;
+}
+
+.logout-btn:hover {
+  color: #ff6b6b;
+  border-color: rgba(255, 107, 107, 0.5);
+  background: rgba(255, 107, 107, 0.08);
+  box-shadow: none;
 }
 
 /* ============ 操作卡片组 ============ */
@@ -739,44 +990,6 @@ const handleLogin = (): void => {
   transform: scale(1.1);
 }
 
-/* —— select 下拉 —— */
-.select-wrap {
-  position: relative;
-}
-
-.select {
-  appearance: none;
-  -webkit-appearance: none;
-  padding: 8px 34px 8px 14px;
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.88);
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  cursor: pointer;
-  transition: border-color 0.18s ease;
-}
-
-.select:hover,
-.select:focus {
-  border-color: rgba(var(--brand-rgb), 0.4);
-  outline: none;
-}
-
-.select option {
-  background: #1e1e24;
-  color: #fff;
-}
-
-.select-arrow {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  pointer-events: none;
-  color: rgba(255, 255, 255, 0.4);
-}
-
 /* —— switch 开关 —— */
 .switch {
   position: relative;
@@ -918,5 +1131,287 @@ const handleLogin = (): void => {
 
 .light .action-sub {
   color: rgba(40, 40, 46, 0.5);
+}
+
+/* —— 设置卡片 / 播放历史：浅色模式（与顶部框架同一套浅底体系） —— */
+.light .setting-card-title {
+  color: rgba(40, 40, 46, 0.45);
+}
+
+.light .setting-row {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.light .row-title {
+  color: rgba(24, 24, 28, 0.9);
+}
+
+.light .row-desc {
+  color: rgba(40, 40, 46, 0.5);
+}
+
+.light .mode-switch {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.light .mode-btn {
+  color: rgba(24, 24, 28, 0.55);
+}
+
+.light .mode-btn:not(.active):hover {
+  color: rgba(24, 24, 28, 0.85);
+}
+
+.light .switch-track {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.light .slider {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.light .slider::-webkit-slider-thumb {
+  border-color: #ffffff;
+}
+
+.light .slider-value {
+  color: rgba(40, 40, 46, 0.55);
+}
+
+.light .list-title {
+  color: rgba(24, 24, 28, 0.9);
+}
+
+.light .clear-btn {
+  color: rgba(40, 40, 46, 0.6);
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.light .clear-btn:hover {
+  color: #e81123;
+  background: rgba(232, 17, 35, 0.08);
+  border-color: rgba(232, 17, 35, 0.3);
+}
+
+.light .history-item {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.05);
+}
+
+.light .history-title {
+  color: rgba(24, 24, 28, 0.9);
+}
+
+.light .history-up,
+.light .history-duration {
+  color: rgba(40, 40, 46, 0.45);
+}
+
+.light .rank {
+  color: rgba(24, 24, 28, 0.35);
+}
+
+/* ============ 设置区小按钮（应用/撤销/重置） ============ */
+.slider-row {
+  gap: 8px;
+}
+
+.mini-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.mini-btn:hover:not(:disabled) {
+  border-color: rgba(var(--brand-rgb), 0.45);
+  color: var(--brand);
+}
+
+.mini-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 有未应用修改时，「应用」高亮+脉冲 */
+.mini-btn.btn-apply.is-active {
+  color: #fff;
+  border-color: transparent;
+  background: var(--brand-grad);
+  box-shadow: 0 2px 12px rgba(var(--brand-rgb), 0.4);
+  animation: apply-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes apply-pulse {
+  0%,
+  100% {
+    box-shadow: 0 2px 12px rgba(var(--brand-rgb), 0.35);
+  }
+  50% {
+    box-shadow: 0 2px 20px rgba(var(--brand-rgb), 0.65);
+  }
+}
+
+/* ============ 均衡器 ============ */
+.eq-body {
+  margin: 4px 0 6px;
+  padding: 16px 18px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: opacity 0.2s ease;
+}
+
+.eq-body.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.eq-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.eq-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.eq-bands {
+  display: flex;
+  gap: 6px;
+}
+
+.eq-band {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.eq-db {
+  height: 16px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.eq-db.is-pos {
+  color: var(--brand);
+}
+
+.eq-db.is-neg {
+  color: #5fb3d4;
+}
+
+.eq-slider-wrap {
+  position: relative;
+  width: 28px;
+  height: 140px;
+  display: flex;
+  justify-content: center;
+}
+
+/* 0dB 参考横线 */
+.eq-track-zero {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+}
+
+.eq-slider {
+  -webkit-appearance: slider-vertical;
+  appearance: slider-vertical;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 24px;
+  height: 140px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.eq-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 10px;
+  border-radius: 2px;
+  background: #2a2a2a;
+  border: 1px solid var(--brand);
+  cursor: pointer;
+}
+
+.eq-slider[data-pos='pos']::-webkit-slider-thumb {
+  border-color: var(--brand);
+}
+
+.eq-slider[data-pos='neg']::-webkit-slider-thumb {
+  border-color: #5fb3d4;
+}
+
+.eq-slider[data-pos='zero']::-webkit-slider-thumb {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.eq-freq {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 0.3px;
+}
+
+/* ============ 歌词设置提示 ============ */
+.setting-hint {
+  margin: 2px 4px 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ============ 新增控件的浅色模式 ============ */
+.light .mini-btn {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: rgba(24, 24, 28, 0.75);
+}
+
+.light .eq-body {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+.light .eq-db {
+  color: rgba(40, 40, 46, 0.4);
+}
+
+.light .eq-track-zero {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.light .eq-slider::-webkit-slider-thumb {
+  background: #f2f2f4;
+}
+
+.light .eq-freq,
+.light .setting-hint {
+  color: rgba(40, 40, 46, 0.45);
 }
 </style>

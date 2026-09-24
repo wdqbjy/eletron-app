@@ -2,7 +2,7 @@
   <div class="page home-page">
     <!-- Hero Banner（深色卡片 + 渐变标题） -->
     <div class="hero">
-      <h2 class="hero-title text-gradient">欢迎使用 Pink Music</h2>
+      <h2 class="hero-title text-gradient">欢迎使用 Dark Music</h2>
       <p class="hero-sub">从 B 站发现并播放你喜欢的音乐</p>
     </div>
 
@@ -56,11 +56,12 @@
               @error="onCoverError"
             />
             <span v-if="music.rec_reason" class="rec-reason-badge">{{ music.rec_reason }}</span>
+            <span v-if="episodeCount[music.bvid] > 1" class="p-badge">{{ episodeCount[music.bvid] }} P</span>
             <div class="play-overlay">
               <button class="play-button" title="播放" @click.stop="playMusic(music)">
                 <svg viewBox="0 0 24 24" fill="white" width="20" height="20"><path d="M8 5v14l11-7z"/></svg>
               </button>
-              <button class="download-button" title="在浏览器打开" @click.stop="openExternal(music)">
+              <button class="download-button" title="下载" @click.stop="downloadMusic(music)">
                 <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
               </button>
             </div>
@@ -79,14 +80,48 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { reactive, watch, onMounted } from 'vue'
 import { useRecommendStore } from '../stores/recommend'
 import { useAudioPlayer } from '../composables/useAudioPlayer'
+import { useDownload } from '../composables/useDownload'
 import { formatPlayCount, formatDuration } from '../utils/bilibili'
+import { getMusicEpisodes } from '../apis/bilibili'
 import type { RecommendedMusic } from '../apis/bilibili'
 
 const recommendStore = useRecommendStore()
 const audioPlayer = useAudioPlayer()
+const { downloadMusic } = useDownload()
+
+// bvid → 分P 数（仅 >1 时显示角标）。推荐接口的 archives 不带 videos 字段，
+// 所以只能对每张卡片单独拉 /x/player/pagelist 才知道它是不是合集（用于「N P」徽标）。
+const episodeCount = reactive<Record<string, number>>({})
+
+// 并发拉取分P数：一次小批 4 张，避免 20 张卡片同时请求被 B 站风控降级
+async function fillEpisodeCounts(items: RecommendedMusic[]): Promise<void> {
+  const todo = items.filter((m) => !(m.bvid in episodeCount)).map((m) => m.bvid)
+  const CONCURRENCY = 4
+  for (let i = 0; i < todo.length; i += CONCURRENCY) {
+    const batch = todo.slice(i, i + CONCURRENCY)
+    await Promise.all(
+      batch.map(async (bvid) => {
+        try {
+          const res = await getMusicEpisodes(bvid)
+          if (res?.code === 0 && Array.isArray(res.data) && res.data.length > 1) {
+            episodeCount[bvid] = res.data.length
+          }
+        } catch (_) {}
+      })
+    )
+  }
+}
+
+// 推荐列表变化（含点刷新）后，为出现的卡片补齐分P角标数据
+watch(
+  () => recommendStore.items,
+  (items) => {
+    if (items.length) fillEpisodeCounts(items)
+  }
+)
 
 const fallbackCover =
   'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400'
@@ -94,11 +129,6 @@ const fallbackCover =
 // 点击推荐卡片：拉取真实音频流并播放（底部播放栏随之点亮）
 function playMusic(music: RecommendedMusic): void {
   audioPlayer.playMusic(music)
-}
-
-// electron 渲染层 window.open 走主进程 setWindowOpenHandler → shell.openExternal
-function openExternal(music: RecommendedMusic): void {
-  window.open(`https://www.bilibili.com/video/${music.bvid}`, '_blank')
 }
 
 function onCoverError(e: Event): void {
@@ -240,11 +270,12 @@ onMounted(() => {
   margin: 0;
 }
 
-/* ============ 推荐网格 + 卡片（对齐 pink-music） ============ */
+/* ============ 推荐网格 + 卡片 ============ */
+/* gap 24px，避免卡片「堆积」感 */
 .recommend-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 16px 14px;
+  gap: 24px;
 }
 
 .music-card {
@@ -328,6 +359,24 @@ onMounted(() => {
   top: 8px;
   left: 8px;
   padding: 3px 9px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* 分P数徽标（封面左下角）：「N P」 */
+.p-badge {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 3px 8px;
   font-size: 10px;
   font-weight: 600;
   color: #fff;

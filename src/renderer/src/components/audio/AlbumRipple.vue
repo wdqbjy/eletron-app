@@ -3,7 +3,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { getAnalyser, isAnalyserReady } from '../../utils/audioAnalyser'
 
 /**
- * 大屏播放页 · 封面周围扩散的音频波纹（移植 pink-music AlbumRipple.vue）。
+ * 大屏播放页 · 封面周围扩散的音频波纹。
  * 多个同心圆从封面中心向外扩散，整层 canvas 用 ctx.filter blur 模糊化，
  * 与歌词/封面形成主次分层。激进度 intensity 0-1 控制模糊/透明度/环密度/触发阈值。
  * Apple Music 主题隐藏波纹。

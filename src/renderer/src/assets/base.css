@@ -2,7 +2,7 @@
    默认（:root）为深色；`.light` 加在 <html> 上整应用切换为浅色。
    任意组件均可直接引用颜色变量（--color- * / --ev-c- *）。 */
 :root {
-  /* —— 品牌色（对齐 pink-music：默认粉色）；深/浅共用，随 data-color 整体切换 —— */
+  /* —— 品牌色（默认粉色）；深/浅共用，随 data-color 整体切换 —— */
   --brand: #FF69B4;
   --brand-2: #C9356A;
   --brand-rgb: 255, 105, 180;     /* #FF69B4，供 rgba(var(--brand-rgb), α) */
@@ -25,11 +25,24 @@
   --color-background: #141418;
   --color-background-soft: #1e1e24;
   --color-background-mute: #282830;
+  --bg-rgb: 20, 20, 24;               /* --color-background 的 rgb 形式，供磨砂/渐变叠加 */
+
+  /* —— 框架 chrome（顶栏 / 底部导航胶囊 / 播放栏）统一 Token：
+        所有固定框架只消费这组变量，保证与页面背景同源、随主题色与深浅模式一起变化 —— */
+  --chrome-text: rgba(255, 255, 255, 0.9);
+  --chrome-text-soft: rgba(255, 255, 255, 0.66);
+  --chrome-text-faint: rgba(255, 255, 255, 0.45);
+  --chrome-hover: rgba(255, 255, 255, 0.1);
+  --chrome-border: rgba(255, 255, 255, 0.08);
+  --chrome-surface: rgba(38, 38, 46, 0.72);   /* 浮动胶囊等磨砂面 */
+  --chrome-track: rgba(255, 255, 255, 0.12);   /* 进度条/轨道底 */
+  --chrome-track-strong: rgba(255, 255, 255, 0.22);
+  --chrome-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
 
   --color-text: var(--ev-c-text-1);
 }
 
-/* 渐变文字（对应 pink-music 的 text-gradient） */
+/* 渐变文字 */
 .text-gradient {
   background: var(--brand-grad-text);
   -webkit-background-clip: text;
@@ -50,9 +63,21 @@
   --color-background: #f7f7f9;
   --color-background-soft: #f2f2f4;
   --color-background-mute: #ececef;
+  --bg-rgb: 247, 247, 249;
+
+  /* —— 浅色模式 chrome Token：框架与页面同为浅底，不再硬编码深色 —— */
+  --chrome-text: rgba(24, 24, 28, 0.9);
+  --chrome-text-soft: rgba(40, 40, 46, 0.66);
+  --chrome-text-faint: rgba(40, 40, 46, 0.45);
+  --chrome-hover: rgba(0, 0, 0, 0.06);
+  --chrome-border: rgba(0, 0, 0, 0.08);
+  --chrome-surface: rgba(255, 255, 255, 0.72);
+  --chrome-track: rgba(0, 0, 0, 0.1);
+  --chrome-track-strong: rgba(0, 0, 0, 0.2);
+  --chrome-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
 }
 
-/* ============ 主题色（data-color 属性，对齐 pink-music 色值） ============
+/* ============ 主题色（data-color 属性） ============
    主题 store 把 data-color 挂在 <html>；这里覆盖 --brand* 变量让全应用换色。 */
 [data-color="purple"] {
   --brand: #A855F7;
@@ -94,7 +119,7 @@
   --brand-glow-soft: rgba(249, 115, 22, 0.15);
 }
 
-/* Apple Music：唯一强调色红，发光改极柔（对齐 pink-music design philosophy） */
+/* Apple Music：唯一强调色红，发光改极柔 */
 [data-color="apple-music"] {
   --brand: #FF3B30;
   --brand-2: #D70015;

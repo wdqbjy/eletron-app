@@ -3,7 +3,7 @@ import { getMusicRegionFeed, type RecommendedMusic } from '../apis/bilibili'
 import { stripHtmlTags, fixCoverUrl, thumbnailCover } from '../utils/bilibili'
 
 /**
- * 首页「推荐音乐」store（对齐 pink-music 的 useMusic.loadRecommendedMusic）
+ * 首页「推荐音乐」store
  * - 数据源：B 站音乐区推荐接口（from_region=1003），比全站搜索更贴合“推荐”。
  * - load()：拉取 → 格式化 → 随机打乱；供首页 onMounted / 刷新按钮调用。
  */

@@ -62,12 +62,14 @@ const electronMyAPI = {
       return undefined
     }
   },
-  // B 站音乐（pink-music 同源示例）：contextBridge 白名单 → ipcRenderer.invoke → ipcMain.handle
+  // B 站音乐：contextBridge 白名单 → ipcRenderer.invoke → ipcMain.handle
   bilibili: {
     searchMusic: (keyword: string, page?: number, pageSize?: number): Promise<any> =>
       ipcRenderer.invoke('bili:search-music', keyword, page, pageSize),
     getMusicInfo: (bvid: string): Promise<any> =>
       ipcRenderer.invoke('bili:get-music-info', bvid),
+    getMusicEpisodes: (bvid: string): Promise<any> =>
+      ipcRenderer.invoke('bili:get-episodes', bvid),
     getMusicRegionFeed: (displayId?: number, requestCnt?: number): Promise<any> =>
       ipcRenderer.invoke('bili:region-feed', displayId, requestCnt),
     getMusicPlayUrl: (bvid: string, cid: number): Promise<any> =>
@@ -77,7 +79,32 @@ const electronMyAPI = {
     searchLyric: (keyword: string): Promise<any> =>
       ipcRenderer.invoke('bili:search-lyric', keyword),
     getLyricById: (id: number): Promise<any> =>
-      ipcRenderer.invoke('bili:get-lyric-by-id', id)
+      ipcRenderer.invoke('bili:get-lyric-by-id', id),
+    // 扫码登录（generate-qrcode / poll-qrcode / get-user-info / logout-bilibili）
+    generateQrcode: (): Promise<any> => ipcRenderer.invoke('bili:generate-qrcode'),
+    pollQrcode: (qrcodeKey: string): Promise<any> =>
+      ipcRenderer.invoke('bili:poll-qrcode', qrcodeKey),
+    logoutBilibili: (): Promise<any> => ipcRenderer.invoke('bili:logout-bilibili'),
+    getBilibiliUserInfo: (): Promise<any> => ipcRenderer.invoke('bili:get-user-info')
+  },
+  // 音乐下载（download-audio / download-progress 链路）
+  download: {
+    /** 发起下载（任务 id 由渲染层生成，保证与本地任务同一条） */
+    start: (taskInfo: Record<string, any>): Promise<any> =>
+      ipcRenderer.invoke('bili:download-audio', taskInfo),
+    getTasks: (): Promise<any> => ipcRenderer.invoke('bili:get-download-tasks'),
+    clearTasks: (): Promise<any> => ipcRenderer.invoke('bili:clear-download-tasks'),
+    openFolder: (): Promise<any> => ipcRenderer.invoke('bili:open-download-folder'),
+    getDirectory: (): Promise<any> => ipcRenderer.invoke('bili:get-download-directory'),
+    setDirectory: (dirPath: string): Promise<any> =>
+      ipcRenderer.invoke('bili:set-download-directory', dirPath),
+    selectDirectory: (): Promise<any> => ipcRenderer.invoke('bili:select-download-directory'),
+    /** 订阅主进程下载进度推送，返回取消订阅函数 */
+    onProgress: (callback: (task: any) => void): (() => void) => {
+      const listener = (_event: unknown, task: any): void => callback(task)
+      ipcRenderer.on('bili:download-progress', listener)
+      return () => ipcRenderer.removeListener('bili:download-progress', listener)
+    }
   },
 }
 

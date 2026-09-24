@@ -1,6 +1,6 @@
 <template>
   <div class="player-bar app-region-no-drag">
-    <!-- 左侧：当前歌曲封面 + 信息（结构对应 pink-music AppPlayerBar 的 current-track） -->
+    <!-- 左侧：当前歌曲封面 + 信息（current-track） -->
     <div class="current-track">
       <button
         class="current-cover"
@@ -63,24 +63,50 @@
       <p v-if="player.audioError" class="player-error">{{ player.audioError }}</p>
     </div>
 
-    <!-- 右侧：操作（对应 pink-music 的 player-actions，如加歌单） -->
+    <!-- 右侧：操作（歌单 / 播放队列） -->
     <div class="player-actions">
-      <button class="action-btn" title="添加到歌单" :disabled="!current">
+      <button class="action-btn" title="添加到歌单" :disabled="!current" @click="openPlaylistModal">
         <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
       </button>
+      <button
+        class="action-btn"
+        :class="{ active: player.showQueuePanel }"
+        title="播放队列"
+        @click="player.toggleQueuePanel()"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" width="18" height="18">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+      </button>
     </div>
+    <!-- 播放队列面板（点右上列表面板图标弹出） -->
+    <QueuePanel v-if="player.showQueuePanel" />
   </div>
+
+  <!-- 添加到歌单 / 歌单管理弹窗 -->
+  <PlaylistManager v-if="playlistStore.showPlaylistModal" />
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { usePlayerStore } from '../stores/player'
+import { usePlaylistStore } from '../stores/playlist'
 import { useAudioPlayer } from '../composables/useAudioPlayer'
+import QueuePanel from './QueuePanel.vue'
+import PlaylistManager from './PlaylistManager.vue'
 
 const player = usePlayerStore()
 const playerApi = useAudioPlayer()
+const playlistStore = usePlaylistStore()
 
 const current = computed(() => player.current)
+
+function openPlaylistModal() {
+  if (!current.value) return
+  playlistStore.openPlaylistModal(current.value)
+}
 const subtitle = computed(() => (current.value ? current.value.author : '从首页推荐点击播放歌曲'))
 
 const trackEl = ref<HTMLDivElement | null>(null)
@@ -109,10 +135,17 @@ const onCoverError = (e: Event): void => {
   align-items: center;
   gap: 16px;
   padding: 0 20px;
-  background: rgba(18, 18, 22, 0.92);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  /* 顶部一线品牌色晕 + 与页面同源的磨砂底色：深浅模式 / 主题色整体联动 */
+  background:
+    linear-gradient(180deg,
+      rgba(var(--brand-rgb), 0.1) 0%,
+      rgba(var(--brand-rgb), 0.02) 42%,
+      rgba(var(--brand-rgb), 0) 100%),
+    rgba(var(--bg-rgb), 0.86);
+  border-top: 1px solid var(--chrome-border);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  transition: background 0.25s ease, border-color 0.25s ease;
 }
 .app-region-no-drag {
   -webkit-app-region: no-drag;
@@ -160,7 +193,7 @@ const onCoverError = (e: Event): void => {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--chrome-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -168,7 +201,7 @@ const onCoverError = (e: Event): void => {
 .current-info .author {
   margin: 2px 0 0;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--chrome-text-faint);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -190,7 +223,7 @@ const onCoverError = (e: Event): void => {
   height: 34px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--chrome-text-soft);
   cursor: pointer;
   border-radius: 50%;
   display: flex;
@@ -199,7 +232,7 @@ const onCoverError = (e: Event): void => {
   transition: background 0.16s ease, color 0.16s ease;
 }
 .control-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--chrome-hover);
   color: var(--brand);
 }
 .mode-btn.active {
@@ -231,8 +264,8 @@ const onCoverError = (e: Event): void => {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  border-top-color: #fff;
+  border: 2px solid var(--chrome-track-strong);
+  border-top-color: var(--chrome-text);
   animation: spin 0.7s linear infinite;
 }
 @keyframes spin {
@@ -249,7 +282,7 @@ const onCoverError = (e: Event): void => {
 }
 .progress-time {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--chrome-text-faint);
   font-variant-numeric: tabular-nums;
   min-width: 34px;
 }
@@ -257,7 +290,7 @@ const onCoverError = (e: Event): void => {
   flex: 1;
   height: 4px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--chrome-track);
   overflow: hidden;
   cursor: pointer;
   position: relative;
@@ -270,7 +303,7 @@ const onCoverError = (e: Event): void => {
   left: 0;
   top: 0;
   height: 100%;
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--chrome-track-strong);
   border-radius: 2px;
 }
 .progress-fill {
@@ -291,16 +324,16 @@ const onCoverError = (e: Event): void => {
   text-overflow: ellipsis;
 }
 .player-actions {
-  width: 44px;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
 }
 .action-btn {
   width: 32px;
   height: 32px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--chrome-text-soft);
   cursor: pointer;
   border-radius: 50%;
   display: flex;
@@ -308,7 +341,11 @@ const onCoverError = (e: Event): void => {
   justify-content: center;
 }
 .action-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--chrome-hover);
+  color: var(--brand);
+}
+.action-btn.active {
+  background: var(--chrome-hover);
   color: var(--brand);
 }
 .action-btn:disabled {

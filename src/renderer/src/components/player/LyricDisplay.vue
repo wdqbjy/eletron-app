@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ref, watch, onUnmounted, computed, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, computed, nextTick } from 'vue'
 import { useLyricStore } from '../../stores/lyric'
 import { usePlayerStore } from '../../stores/player'
+import { useSettingsStore } from '../../stores/settings'
 import type { NeteaseSong } from '../../apis/bilibili'
 import type { LyricLine } from '../../utils/lyric'
 
 /**
- * 歌词行组件 —— 对齐 pink-music player/LyricDisplay.vue：
+ * 歌词行组件：
  * 自动跟随高亮 + 滚轮手动浏览（6s 后回归）+ 校正偏移 + 搜索面板。
  * 只做当前曲目（player.current）歌词的展示/交互，由 PlayerPage 包裹。
  */
@@ -18,6 +19,31 @@ const props = defineProps<{
 
 const lyricStore = useLyricStore()
 const playerStore = usePlayerStore()
+const settingsStore = useSettingsStore()
+
+// === 左上角窗口自定义控制（最小化/最大化/关闭）——复刻 TopBar 的实现 ===
+const winIpc = window as any
+const isMaximized = ref(false)
+async function checkMaximized() {
+  if (winIpc.electronMyAPI) {
+    try {
+      isMaximized.value = await winIpc.electronMyAPI.isMaximized()
+    } catch (_) {}
+  }
+}
+let winResizeTimer: ReturnType<typeof setTimeout> | null = null
+function onWinResize() {
+  if (winResizeTimer) clearTimeout(winResizeTimer)
+  winResizeTimer = setTimeout(checkMaximized, 100)
+}
+onMounted(() => {
+  checkMaximized()
+  window.addEventListener('resize', onWinResize)
+})
+onUnmounted(() => {
+  window.removeEventListener('resize', onWinResize)
+  if (winResizeTimer) clearTimeout(winResizeTimer)
+})
 
 // === 搜索面板状态 ===
 const searchKeyword = ref('')
@@ -258,11 +284,12 @@ async function handleResetManual() {
   await lyricStore.loadLyricForTrack({ id: track.bvid, title: track.title, artist: track.author })
 }
 
-// 附注行（翻译）：简体或与原文不同时才显示，避免重复刷屏
+/** 按「歌词设置-显示模式」取附注行：主行始终是原文，附注为罗马音或翻译 */
 function getSubLines(line: LyricLine): string[] {
-  const t = line.translation?.trim()
-  if (!t) return []
-  if (t === line.text.trim()) return []
+  const mode = settingsStore.lyricDisplayMode
+  const raw = mode === 'romaji' ? line.romaji : mode === 'translation' ? line.translation : ''
+  const t = raw?.trim()
+  if (!t || t === line.text.trim()) return []
   return [t]
 }
 
@@ -273,6 +300,7 @@ onUnmounted(() => {
 
 <template>
   <div class="lyric-stage" :class="{ large }" @wheel.prevent="onWheel">
+  
     <!-- 歌词主视图（抽屉未打开时） -->
     <div v-show="!showSearchPanel" class="lyric-main">
       <div v-if="lyricStore.isLyricLoading" class="lyric-state">
@@ -410,6 +438,29 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+
+/* 与顶部栏 TopBar.vue 的 .control-btn 保持一致的尺寸与交互 */
+.wc-btn {
+  width: 34px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.wc-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.wc-btn.close:hover {
+  background: #e81123;
+  color: #fff;
 }
 .lyric-main {
   width: 100%;

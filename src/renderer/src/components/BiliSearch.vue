@@ -27,7 +27,7 @@ const autoLoad = async () => {
 
 <template>
   <div class="bili-demo">
-    <h3>B 站音乐搜索示例（pink-music 同源调用链）</h3>
+    <h3>B 站音乐搜索示例</h3>
     <div class="bar">
       <input
         v-model="state.query"

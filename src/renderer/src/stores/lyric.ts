@@ -4,7 +4,7 @@ import { getLyric, searchLyric, getLyricById, type NeteaseSong } from '../apis/b
 import { parseLyric, currentLyricIndex, type LyricLine } from '../utils/lyric'
 
 /**
- * 歌词 store —— 对齐 pink-music stores/lyric.js：
+ * 歌词 store：
  * 按当前曲目加载歌词、解析、缓存，维护当前高亮行与用户手动偏移。
  */
 export const useLyricStore = defineStore('lyric', () => {
@@ -57,8 +57,12 @@ export const useLyricStore = defineStore('lyric', () => {
     }
   }
 
-  /** 直接以某段 LRC 文本设为当前歌词（手动搜索/指定来源时用） */
-  function setCurrentLyric(raw: string, key?: string, source = 'netease') {
+  /** 直接以 LRC 文本（或 {lrc,tv,rv} 对象）设为当前歌词（手动搜索/指定来源时用） */
+  function setCurrentLyric(
+    raw: string | { lrc?: string; tv?: string; rv?: string },
+    key?: string,
+    source = 'netease'
+  ) {
     const parsed = parseLyric(raw)
     currentLyric.value = parsed.lyrics
     if (key) {

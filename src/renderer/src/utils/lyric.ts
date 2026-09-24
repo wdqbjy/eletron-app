@@ -1,12 +1,15 @@
 /**
  * 歌词（LRC）解析工具（渲染层，纯函数）
- * 对齐 pink-music stores/lyric.js 的 parseLyric：解析 `[mm:ss.xx]文本` 行，
+ * 解析 `[mm:ss.xx]文本` 行，
  * 并支持翻译已由主进程合并进同一行（`原文 翻译`）的情况，也兼容独立的 tv 段。
  */
 export interface LyricLine {
   time: number // 起始毫秒
   text: string
+  /** 中文翻译（tv 段 / 主进程拼接到行尾的翻译） */
   translation?: string
+  /** 罗马音（rv 段，日文歌多见） */
+  romaji?: string
 }
 export interface ParsedLyric {
   lyrics: LyricLine[]
@@ -109,7 +112,9 @@ export function parseLyric(raw: string | ParsedLyric | { lrc?: string; rv?: stri
       lyrics.push({
         time: timeMs,
         text,
-        translation: translation || findTimeMatch(rvMap, timeMs) || findTimeMatch(tvMap, timeMs)
+        // 行尾双空格拼接的视为中文翻译；tv 段兜底；rv 段单独作为罗马音
+        translation: translation || findTimeMatch(tvMap, timeMs),
+        romaji: findTimeMatch(rvMap, timeMs)
       })
     }
   }

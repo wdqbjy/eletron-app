@@ -1,8 +1,23 @@
 <script setup lang="ts">
+import { onMounted, onUnmounted } from 'vue'
 import TopBar from './components/TopBar.vue'
 import BottomNav from './components/BottomNav.vue'
 import PlayerBar from './components/PlayerBar.vue'
 import PlayerPage from './components/PlayerPage.vue'
+import DownloadManager from './components/DownloadManager.vue'
+import { useDownloadStore } from './stores/download'
+
+const downloadStore = useDownloadStore()
+
+// 启动时同步主进程内存任务 + 订阅下载进度推送
+onMounted(() => {
+  downloadStore.loadTasks()
+  downloadStore.registerProgressListener()
+})
+
+onUnmounted(() => {
+  downloadStore.unregisterProgressListener()
+})
 </script>
 
 <template>
@@ -16,6 +31,8 @@ import PlayerPage from './components/PlayerPage.vue'
     <PlayerBar />
     <!-- 歌词大页（点播放器封面弹出） -->
     <PlayerPage />
+    <!-- 下载管理弹窗（卡片下载 / 我的-下载管理 触发） -->
+    <DownloadManager />
   </div>
 </template>
 
@@ -38,7 +55,14 @@ import PlayerPage from './components/PlayerPage.vue'
   padding-bottom: 140px;
 
   scrollbar-width: thin !important;
-  scrollbar-color: rgba(255, 255, 255, 0.15) transparent !important;
+  scrollbar-color: var(--chrome-track) transparent !important;
+}
+
+/* 浅色模式滚动条（深色为默认白色半透明，见下方 ::-webkit 规则） */
+.light .app-main::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18) !important;
+  background-clip: padding-box !important;
+  border: 2px solid transparent !important;
 }
 
 /* WebKit 滚动条 —— 鼠标在容器上就全条变粉 */

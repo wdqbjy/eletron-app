@@ -5,7 +5,7 @@ import type { RecommendedMusic } from '../apis/bilibili'
 export type PlayMode = 'order' | 'loop' | 'single' | 'shuffle'
 export const PLAY_MODES: PlayMode[] = ['order', 'loop', 'single', 'shuffle']
 
-/** 各模式元信息（图标为内联 SVG，对应 pink-music App.vue 的 playModes） */
+/** 各模式元信息（图标为内联 SVG） */
 const PLAY_MODE_META: Record<PlayMode, { label: string; icon: string }> = {
   // 顺序：双向水平箭头
   order: {
@@ -48,8 +48,19 @@ export const usePlayerStore = defineStore('player', {
     duration: 0,
     buffered: 0,
     playMode: 'order' as PlayMode,
-    /** 歌词大页是否打开（点播放器封面弹出，对应 pink-music showPlayerPage） */
-    showPlayerPage: false
+    /** 歌词大页是否打开（点播放器封面弹出） */
+    showPlayerPage: false,
+    /** 播放队列（当前可切歌的列表，初始取自推荐；底部播放器的「队列」面板据此渲染） */
+    queue: [] as RecommendedMusic[],
+    /** 队列是否来自多分P(合集)视频展开（同一 bvid 多 cid）。播单曲时切回推荐队列 */
+    queueIsEpisodes: false,
+    showQueuePanel: false,
+    /**
+     * 当前多分P合集信息。
+     * 点击合集卡片时由 useAudioPlayer 填充：title=视频标题(如「民谣100首」)，episodes=展开后的分P。
+     * 播放单曲时置空。底部「歌曲管理/队列」面板据此显示合集名。
+     */
+    currentSeries: null as { title: string; episodes: RecommendedMusic[] } | null
   }),
   getters: {
     hasCurrent: (s): boolean => !!s.current,
@@ -99,6 +110,29 @@ export const usePlayerStore = defineStore('player', {
     togglePlayMode() {
       const idx = PLAY_MODES.indexOf(this.playMode)
       this.playMode = PLAY_MODES[(idx + 1) % PLAY_MODES.length]
+    },
+    // ===== 播放队列 =====
+    setQueue(list: RecommendedMusic[]) {
+      this.queue = list
+    },
+    setQueueIsEpisodes(v: boolean) {
+      this.queueIsEpisodes = v
+    },
+    setShowQueuePanel(v: boolean) {
+      this.showQueuePanel = v
+    },
+    toggleQueuePanel() {
+      this.showQueuePanel = !this.showQueuePanel
+    },
+    removeFromQueue(bvid: string) {
+      this.queue = this.queue.filter((m) => m.bvid !== bvid)
+    },
+    clearQueue() {
+      this.queue = []
+    },
+    /** 设置当前合集信息（多分P卡片点击时调用）；传 null 清空（播单曲时） */
+    setCurrentSeries(series: { title: string; episodes: RecommendedMusic[] } | null) {
+      this.currentSeries = series
     }
   }
 })

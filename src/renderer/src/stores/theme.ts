@@ -8,7 +8,7 @@ const COLOR_KEY = 'app-theme-color'
 const COLORS: Color[] = ['pink', 'purple', 'blue', 'green', 'orange', 'apple-music']
 
 /**
- * 全局主题 store（模式 dark/light + 主题色，整应用生效，对齐 pink-music）
+ * 全局主题 store（模式 dark/light + 主题色，整应用生效）
  * - 模式：`class="dark/light"` 加在 <html> 上，CSS 用 `.light`/`:root` 变量切换。
  * - 颜色：`data-color` 属性加在 <html> 上，base.css 的 `[data-color="…"]` 覆盖品牌变量。
  * - init() 应在应用启动时调用一次：读 localStorage → 回退系统偏好，避免闪烁。

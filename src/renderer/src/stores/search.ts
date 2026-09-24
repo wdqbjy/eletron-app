@@ -3,7 +3,7 @@ import type { SearchResultItem } from '../apis/bilibili'
 
 /**
  * 搜索状态（Pinia，Options 风格）
- * 对齐 pink-music-app 的 stores/search.js：state 平铺 + actions 直接改。
+ * state 平铺 + actions 直接改。
  */
 export const useSearchStore = defineStore('search', {
   state: () => ({

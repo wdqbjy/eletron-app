@@ -31,11 +31,27 @@ declare global {
       bilibili: {
         searchMusic: (keyword: string, page?: number, pageSize?: number) => Promise<any>
         getMusicInfo: (bvid: string) => Promise<any>
+        getMusicEpisodes: (bvid: string) => Promise<any>
         getMusicRegionFeed: (displayId?: number, requestCnt?: number) => Promise<any>
         getMusicPlayUrl: (bvid: string, cid: number) => Promise<any>
         getLyric: (arg: { title: string; artist: string }) => Promise<any>
         searchLyric: (keyword: string) => Promise<any>
         getLyricById: (id: number) => Promise<any>
+        // 扫码登录（generateQrcode / pollQrcode / getBilibiliUserInfo / logoutBilibili）
+        generateQrcode: () => Promise<any>
+        pollQrcode: (qrcodeKey: string) => Promise<any>
+        logoutBilibili: () => Promise<any>
+        getBilibiliUserInfo: () => Promise<any>
+      }
+      download: {
+        start: (taskInfo: Record<string, any>) => Promise<any>
+        getTasks: () => Promise<any>
+        clearTasks: () => Promise<any>
+        openFolder: () => Promise<any>
+        getDirectory: () => Promise<any>
+        setDirectory: (dirPath: string) => Promise<any>
+        selectDirectory: () => Promise<any>
+        onProgress: (callback: (task: any) => void) => () => void
       }
     }
   }

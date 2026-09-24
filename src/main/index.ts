@@ -6,6 +6,7 @@ import { autoUpdater } from 'electron-updater'
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } from 'axios'
 import icon from '../../resources/icon.png?asset'
 import { bilibiliApi } from './services/bilibili'
+import { downloadService } from './services/download'
 import { assertSafeUrl, SecurityError } from './security/ssrf'
 import { nonEmptyString, boundedInt, plainObject, ParamError } from './security/validate'
 
@@ -59,12 +60,12 @@ function installBiliAudioProtocol(): void {
           headers: outHeaders
         })
       } catch (err) {
-        console.error('[biliaudio] 代理失败:', err)
+        console.error('[biliaudio] proxy failed:', err)
         return new Response('proxy error', { status: 502, headers: CORS_HEADERS })
       }
     })
   } catch (err) {
-    console.error('[biliaudio] 注册协议失败:', err)
+    console.error('[biliaudio] register protocol failed:', err)
   }
 }
 
@@ -82,7 +83,7 @@ function saveEncryptedToken(token: string): void {
       : Buffer.from(token, 'utf-8')
     writeFileSync(TOKEN_FILE, buffer)
   } catch (err) {
-    console.error('[Token] 保存失败:', err)
+    console.error('[Token] save failed:', err)
   }
 }
 
@@ -94,7 +95,7 @@ function readEncryptedToken(): string | null {
       ? safeStorage.decryptString(buffer)
       : buffer.toString('utf-8')
   } catch (err) {
-    console.error('[Token] 读取失败:', err)
+    console.error('[Token] read failed:', err)
     return null
   }
 }
@@ -105,7 +106,7 @@ function clearEncryptedToken(): void {
       unlinkSync(TOKEN_FILE)
     }
   } catch (err) {
-    console.error('[Token] 清除失败:', err)
+    console.error('[Token] clear failed:', err)
   }
 }
 
@@ -184,27 +185,27 @@ class ApiService {
           const status = error.response.status
           switch (status) {
             case 401:
-              console.error('未授权，请重新登录')
+              console.error('unauthorized, please re-login')
               this.handleUnauthorized()
               break
             case 403:
-              console.error('拒绝访问')
+              console.error('access denied')
               break
             case 404:
-              console.error('请求的资源不存在')
+              console.error('resource not found')
               break
             case 500:
-              console.error('服务器内部错误')
+              console.error('server internal error')
               break
             default:
-              console.error(`请求错误: ${status}`)
+              console.error(`request error: ${status}`)
           }
         } else if (error.request) {
           // 请求已发出但没有收到响应
-          console.error('网络错误，无法连接到服务器')
+          console.error('network error, cannot connect to server')
         } else {
           // 请求配置出错
-          console.error('请求配置错误:', error.message)
+          console.error('request config error:', error.message)
         }
         
         return Promise.reject(error)
@@ -363,8 +364,8 @@ const BILIBILI_UA =
 
 /**
  * B 站封面/CDN 会校验 Referer，缺了会 403。渲染层 <img> 更不会带 bilibili 的 Referer，
- * 用 webRequest 在【主进程】给图床请求统一补上 Referer/Origin/UA（与 pink-music 的
- * installWebRequestInterceptors 同法；只影响渲染层图片直连，不影响主进程 API）。
+ * 用 webRequest 在【主进程】给图床请求统一补上 Referer/Origin/UA
+ * （只影响渲染层图片直连，不影响主进程 API）。
  */
 function setupBilibiliImageHeaders(win: BrowserWindow): void {
   try {
@@ -386,7 +387,7 @@ function setupBilibiliImageHeaders(win: BrowserWindow): void {
       }
     )
   } catch (err) {
-    console.error('[安全] 安装 B 站图片 Referer 头失败:', err)
+    console.error('[sec] install bilibili img referer failed:', err)
   }
 }
 
@@ -446,7 +447,7 @@ class ElectronMyApp {
         if (params !== undefined) plainObject(params, 'params')
         return await apiService.get(url, params)
       } catch (e) {
-        console.error('[安全] 拦截 http:get', e)
+        console.error('[sec] blocked http:get', e)
         return toSecurityFailure(e)
       }
     })
@@ -458,7 +459,7 @@ class ElectronMyApp {
         if (headers !== undefined) plainObject(headers, 'headers')
         return await apiService.post(url, data, headers ? { headers } : undefined)
       } catch (e) {
-        console.error('[安全] 拦截 http:post', e)
+        console.error('[sec] blocked http:post', e)
         return toSecurityFailure(e)
       }
     })
@@ -469,7 +470,7 @@ class ElectronMyApp {
         if (data !== undefined) plainObject(data, 'data')
         return await apiService.put(url, data)
       } catch (e) {
-        console.error('[安全] 拦截 http:put', e)
+        console.error('[sec] blocked http:put', e)
         return toSecurityFailure(e)
       }
     })
@@ -479,7 +480,7 @@ class ElectronMyApp {
         await assertSafeUrl(url)
         return await apiService.delete(url)
       } catch (e) {
-        console.error('[安全] 拦截 http:delete', e)
+        console.error('[sec] blocked http:delete', e)
         return toSecurityFailure(e)
       }
     })
@@ -490,12 +491,12 @@ class ElectronMyApp {
         if (data !== undefined) plainObject(data, 'data')
         return await apiService.patch(url, data)
       } catch (e) {
-        console.error('[安全] 拦截 http:patch', e)
+        console.error('[sec] blocked http:patch', e)
         return toSecurityFailure(e)
       }
     })
 
-    // ============== B 站音乐（pink-music 同源示例，参数化 + 入参校验） ==============
+    // ============== B 站音乐（参数化 + 入参校验） ==============
     ipcMain.handle('bili:search-music', async (_event, keyword, page, pageSize) => {
       try {
         const kw = nonEmptyString(keyword, 'keyword', 100)
@@ -503,7 +504,7 @@ class ElectronMyApp {
         const ps = boundedInt(pageSize, 'pageSize', 1, 100, 20)
         return await bilibiliApi.searchMusic(kw, p, ps)
       } catch (e) {
-        console.error('[安全] 拦截 bili:search-music', e)
+        console.error('[sec] blocked bili:search-music', e)
         return toSecurityFailure(e)
       }
     })
@@ -513,7 +514,17 @@ class ElectronMyApp {
         if (!/^BV[0-9A-Za-z]{10,12}$/.test(bv)) throw new ParamError('bvid 格式非法')
         return await bilibiliApi.getMusicInfo(bv)
       } catch (e) {
-        console.error('[安全] 拦截 bili:get-music-info', e)
+        console.error('[sec] blocked bili:get-music-info', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:get-episodes', async (_event, bvid) => {
+      try {
+        const bv = nonEmptyString(bvid, 'bvid', 20)
+        if (!/^BV[0-9A-Za-z]{10,12}$/.test(bv)) throw new ParamError('bvid 格式非法')
+        return await bilibiliApi.getMusicEpisodes(bv)
+      } catch (e) {
+        console.error('[sec] blocked bili:get-episodes', e)
         return toSecurityFailure(e)
       }
     })
@@ -523,7 +534,7 @@ class ElectronMyApp {
         const cnt = boundedInt(requestCnt, 'requestCnt', 1, 100, 20)
         return await bilibiliApi.getMusicRegionFeed(did, cnt)
       } catch (e) {
-        console.error('[安全] 拦截 bili:region-feed', e)
+        console.error('[sec] blocked bili:region-feed', e)
         return toSecurityFailure(e)
       }
     })
@@ -534,7 +545,7 @@ class ElectronMyApp {
         const c = boundedInt(cid, 'cid', 1, 100000000000)
         return await bilibiliApi.getMusicPlayUrl(bv, c)
       } catch (e) {
-        console.error('[安全] 拦截 bili:get-music-play-url', e)
+        console.error('[sec] blocked bili:get-music-play-url', e)
         return toSecurityFailure(e)
       }
     })
@@ -545,7 +556,7 @@ class ElectronMyApp {
         const artist = typeof o.artist === 'string' ? o.artist.trim().slice(0, 200) : ''
         return await bilibiliApi.getMusicLyric(title, artist)
       } catch (e) {
-        console.error('[安全] 拦截 bili:get-lyric', e)
+        console.error('[sec] blocked bili:get-lyric', e)
         return toSecurityFailure(e)
       }
     })
@@ -554,7 +565,7 @@ class ElectronMyApp {
         const kw = nonEmptyString(keyword, 'keyword', 100)
         return await bilibiliApi.searchLyric(kw)
       } catch (e) {
-        console.error('[安全] 拦截 bili:search-lyric', e)
+        console.error('[sec] blocked bili:search-lyric', e)
         return toSecurityFailure(e)
       }
     })
@@ -563,9 +574,121 @@ class ElectronMyApp {
         const sid = boundedInt(id, 'id', 1, 9007199254740991)
         return await bilibiliApi.getLyricById(sid)
       } catch (e) {
-        console.error('[安全] 拦截 bili:get-lyric-by-id', e)
+        console.error('[sec] blocked bili:get-lyric-by-id', e)
         return toSecurityFailure(e)
       }
+    })
+
+    // ============== B 站扫码登录（generate-qrcode / poll-qrcode / get-user-info / logout-bilibili） ==============
+    ipcMain.handle('bili:generate-qrcode', async () => {
+      try {
+        return await bilibiliApi.generateQrcode()
+      } catch (e) {
+        console.error('[sec] blocked bili:generate-qrcode', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:poll-qrcode', async (_event, qrcodeKey) => {
+      try {
+        const key = nonEmptyString(qrcodeKey, 'qrcode_key', 128)
+        return await bilibiliApi.pollQrcode(key)
+      } catch (e) {
+        console.error('[sec] blocked bili:poll-qrcode', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:get-user-info', async () => {
+      try {
+        return await bilibiliApi.getUserInfo()
+      } catch (e) {
+        console.error('[sec] blocked bili:get-user-info', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:logout-bilibili', async () => {
+      try {
+        return await bilibiliApi.logout()
+      } catch (e) {
+        console.error('[sec] blocked bili:logout-bilibili', e)
+        return toSecurityFailure(e)
+      }
+    })
+
+    // ============== 音乐下载（download-audio 链路） ==============
+    // 进度推送频道：bili:download-progress → preload onProgress 回调 → download store
+    const broadcastDownload = (task: unknown): void => {
+      if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+        this.mainWindow.webContents.send('bili:download-progress', task)
+      }
+    }
+
+    ipcMain.handle('bili:download-audio', async (_event, params) => {
+      try {
+        const o = plainObject(params, 'params', [
+          'id',
+          'audioUrl',
+          'fileName',
+          'bvid',
+          'cid',
+          'title',
+          'author',
+          'quality',
+          'audioCodecs'
+        ])
+        const audioUrl = nonEmptyString(o.audioUrl, 'audioUrl', 2048)
+        if (!/^https?:\/\//.test(audioUrl)) throw new ParamError('audioUrl 必须是 http(s) 地址')
+        const fileName = nonEmptyString(o.fileName, 'fileName', 200)
+        const optStr = (v: unknown, max: number): string | undefined =>
+          v == null ? undefined : String(v).trim().slice(0, max) || undefined
+        return await downloadService.start(
+          {
+            id: optStr(o.id, 100),
+            audioUrl,
+            fileName,
+            bvid: optStr(o.bvid, 20),
+            cid: optStr(o.cid, 32) as string | undefined,
+            title: optStr(o.title, 200),
+            author: optStr(o.author, 100),
+            quality: optStr(o.quality, 20),
+            audioCodecs: optStr(o.audioCodecs, 100)
+          },
+          broadcastDownload
+        )
+      } catch (e) {
+        console.error('[sec] blocked bili:download-audio', e)
+        return toSecurityFailure(e)
+      }
+    })
+
+    ipcMain.handle('bili:get-download-tasks', async () => {
+      return { code: 0, data: downloadService.list() }
+    })
+
+    ipcMain.handle('bili:clear-download-tasks', async () => {
+      downloadService.clear()
+      return { code: 0 }
+    })
+
+    ipcMain.handle('bili:open-download-folder', async () => {
+      return await downloadService.openFolder()
+    })
+
+    ipcMain.handle('bili:get-download-directory', async () => {
+      return { code: 0, data: downloadService.getDirectory() }
+    })
+
+    ipcMain.handle('bili:set-download-directory', async (_event, dir) => {
+      try {
+        const target = nonEmptyString(dir, 'dir', 1024)
+        return downloadService.setDirectory(target)
+      } catch (e) {
+        console.error('[sec] blocked bili:set-download-directory', e)
+        return toSecurityFailure(e)
+      }
+    })
+
+    ipcMain.handle('bili:select-download-directory', async () => {
+      return await downloadService.selectDirectory()
     })
 
     // ============== 认证相关（入参校验） ==============
@@ -583,7 +706,7 @@ class ElectronMyApp {
         }
         return response
       } catch (e) {
-        console.error('[安全] 拦截 auth:login', e)
+        console.error('[sec] blocked auth:login', e)
         return toSecurityFailure(e)
       }
     })
@@ -600,7 +723,7 @@ class ElectronMyApp {
         apiService.setAuthToken(t)
         return { success: true }
       } catch (e) {
-        console.error('[安全] 拦截 auth:setToken', e)
+        console.error('[sec] blocked auth:setToken', e)
         return toSecurityFailure(e)
       }
     })
@@ -615,7 +738,7 @@ class ElectronMyApp {
         const extra = data === undefined || data === null ? undefined : plainObject(data, 'data')
         return await apiService.uploadFile(url, fp, fn, extra)
       } catch (e) {
-        console.error('[安全] 拦截 http:upload', e)
+        console.error('[sec] blocked http:upload', e)
         return toSecurityFailure(e)
       }
     })
@@ -699,14 +822,33 @@ class ElectronMyApp {
 
     // 启动时自动检查更新
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.error('[Updater] 检查更新失败:', err)
+      console.error('[Updater] check update failed:', err)
     })
   }
 
   public init(): void {
-    app.whenReady().then(() => {
+    app.whenReady().then(async () => {
       installBiliAudioProtocol()
+      // 启动时从 JSON 文件 + Electron session 恢复 B 站登录态，
+      // 之后所有 B 站请求（推荐/搜索等）经拦截器自动带登录 Cookie。
+      // 失败仅记日志，不阻塞窗口创建（匿名 buvid 兜底仍可用）。
+      try {
+        bilibiliApi.loadCookiesFromFile()
+        await bilibiliApi.refreshCookiesFromSession()
+      } catch (e) {
+        console.error('[Bilibili] startup restore login failed:', e)
+      }
       this.createWindow()
+
+      // 启动后台种 B 站指纹 cookie（隐藏窗口加载 bilibili.com 首页）。
+      // 主进程 axios 不走 Chromium 网络栈，set-cookie 不会进 session jar，必须靠
+      // 真实页面访问让 B 站 JS 种下 buvid3/b_nut/_uuid/buvid_fp/b_lsid 等。
+      // 指纹齐全后推荐流才会返回含多分P合集的 feed。
+      // 非阻塞：窗口已先显示，种好后后续推荐请求自动带完整 Cookie；首个 feed
+      // 可能需刷新一两次才出现合集。
+      bilibiliApi.seedBilibiliFingerprint().catch((e) => {
+        console.warn('[Bilibili] startup seed failed:', e?.message)
+      })
 
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {

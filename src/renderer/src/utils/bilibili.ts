@@ -1,6 +1,5 @@
 /**
  * B 站渲染层格式化工具（不发起任何 HTTP 请求）
- * 对应 pink-music-app 的 src/utils/bilibili.js。
  */
 
 /** 去除搜索高亮标签（B 站返回 <em class="keyword"> 包裹关键词） */
@@ -48,7 +47,7 @@ export function parseDuration(input: string | number): number {
   return 0
 }
 
-/** 播放量缩写：12345 → '1.2万'；123456789 → '1.2亿'（照搬 pink-music） */
+/** 播放量缩写：12345 → '1.2万'；123456789 → '1.2亿' */
 export function formatPlayCount(count: number): string {
   if (count == null || isNaN(count)) return '0'
   const trim = (v: string): string => v.replace(/\.0$/, '')

@@ -3,7 +3,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { getAnalyser, isAnalyserReady } from '../../utils/audioAnalyser'
 
 /**
- * 大屏播放页音频频谱可视化（移植 pink-music AudioVisualizer.vue）。
+ * 大屏播放页音频频谱可视化。
  * - 横向居中频谱条，左右镜像，中心对应低频（"鼓点在中央"），主题色 glow。
  * - 深色较高透明度+glow；浅色降透明度；Apple Music 主题背景透明让封面衬底露出来。
  * - 暂停时条形平滑下滑到 0。

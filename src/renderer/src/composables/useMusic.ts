@@ -3,7 +3,7 @@ import { useSearchStore } from '../stores/search'
 import { stripHtmlTags, fixCoverUrl } from '../utils/bilibili'
 
 /**
- * 音乐搜索业务逻辑（对应 pink-music-app 的 composables/useMusic.js）
+ * 音乐搜索业务逻辑
  * 职责：组合 Pinia store + 调用渲染层 API + 数据格式化。
  */
 export function useMusic() {
@@ -28,7 +28,8 @@ export function useMusic() {
             cover: fixCoverUrl(i.pic),
             play: i.play,
             duration: i.duration,
-            pubdate: i.pubdate
+            pubdate: i.pubdate,
+            videos: i.videos || 0
           }))
         )
       } else {

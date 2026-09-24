@@ -34,14 +34,19 @@ const items: { to: string; label: string; icon: string }[] = [
   gap: 4px;
   padding: 6px 10px;
   border-radius: 28px;
-  background: rgba(30, 30, 34, 0.82);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.4),
-    0 0 0 1px rgba(0, 0, 0, 0.2);
+  /* 品牌色斜向淡晕 + 主题磨砂面：随所选主题色一起变色，与整体背景同源 */
+  background:
+    linear-gradient(135deg,
+      rgba(var(--brand-rgb), 0.14) 0%,
+      rgba(var(--brand-rgb), 0.03) 55%,
+      rgba(var(--brand-rgb), 0) 100%),
+    var(--chrome-surface);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--chrome-border);
+  box-shadow: var(--chrome-shadow);
   -webkit-app-region: no-drag;
+  transition: background 0.25s ease, border-color 0.25s ease;
 }
 
 .nav-item {
@@ -51,7 +56,7 @@ const items: { to: string; label: string; icon: string }[] = [
   gap: 2px;
   padding: 6px 14px;
   text-decoration: none;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--chrome-text-faint);
   font-size: 11px;
   border-radius: 18px;
   user-select: none;
@@ -59,8 +64,8 @@ const items: { to: string; label: string; icon: string }[] = [
 }
 
 .nav-item:hover {
-  color: rgba(255, 255, 255, 0.85);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--chrome-text);
+  background: var(--chrome-hover);
 }
 
 .nav-item.active {

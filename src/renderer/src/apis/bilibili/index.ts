@@ -1,7 +1,7 @@
 /**
  * B 站音乐渲染层 API（服务层）
  *
- * 对应 pink-music-app 的 src/service：类型定义 + 方法封装。
+ * 类型定义 + 方法封装。
  * 自身不直接发 HTTP —— 经 window.electronMyAPI.bilibili → IPC → 主进程 BilibiliApi。
  */
 export interface BiliSearchVideoItem {
@@ -13,9 +13,10 @@ export interface BiliSearchVideoItem {
   play: number
   duration: string | number
   pubdate: number
+  videos: number
 }
 
-/** 展示层搜索结果项（格式化后，对应 pink-music 渲染成 card 的字段） */
+/** 展示层搜索结果项（格式化后用于渲染卡片的字段） */
 export interface SearchResultItem {
   bvid: string
   aid: number
@@ -25,6 +26,7 @@ export interface SearchResultItem {
   play: number
   duration: string | number
   pubdate: number
+  videos: number
 }
 
 /** /x/web-interface/search/all/v2 响应 —— B 站原始 payload 形状（注意：data 只有一层） */
@@ -46,17 +48,34 @@ export async function searchMusic(
   page = 1,
   pageSize = 20
 ): Promise<BiliSearchResponse> {
-  return api.searchMusic(keyword, page, pageSize)
+  const res = await api.searchMusic(keyword, page, pageSize)
+  console.log('[bili-recv] searchMusic 返回:', res)
+  return res
 }
 
 /** 获取稿件信息 */
 export async function getMusicInfo(
   bvid: string
 ): Promise<{ code: number; message: string; data?: any }> {
-  return api.getMusicInfo(bvid)
+  const res = await api.getMusicInfo(bvid)
+  console.log('[bili-recv] getMusicInfo 返回:', res)
+  return res
 }
 
-/** 首页「推荐音乐」卡片（// x/web-interface/region/feed/rcmd archives[] 格式化后，对应 pink-music） */
+export interface BiliPage {
+  cid: number
+  page: number
+  part: string
+  duration: number
+}
+/** 分P列表：GET /x/player/pagelist，返回 data: Page[] */
+export async function getMusicEpisodes(bvid: string): Promise<{ code: number; message: string; data?: BiliPage[] }> {
+  const res = await api.getMusicEpisodes(bvid)
+  console.log('[bili-recv] getMusicEpisodes 返回:', res)
+  return res
+}
+
+/** 首页「推荐音乐」卡片（x/web-interface/region/feed/rcmd archives[] 格式化后） */
 export interface RecommendedMusic {
   bvid: string
   aid: number
@@ -85,7 +104,9 @@ export async function getMusicRegionFeed(
   displayId = 1,
   requestCnt = 20
 ): Promise<BiliRegionResponse> {
-  return api.getMusicRegionFeed(displayId, requestCnt)
+  const res = await api.getMusicRegionFeed(displayId, requestCnt)
+  console.log('[bili-recv] getMusicRegionFeed 返回:', res)
+  return res
 }
 
 /** /x/player/playurl 响应 —— B 站原始 payload（data 含 dash / durl 音频流） */
@@ -97,20 +118,25 @@ export interface MusicPlayurlResponse {
 
 /** 获取真实播放地址：主进程透传 B 站原始 payload，渲染层再用 selectAudioUrl 择优 */
 export async function getMusicPlayUrl(bvid: string, cid: number): Promise<MusicPlayurlResponse> {
-  return api.getMusicPlayUrl(bvid, cid)
+  const res = await api.getMusicPlayUrl(bvid, cid)
+  console.log('[bili-recv] getMusicPlayUrl 返回:', res)
+  return res
 }
 
 /** 歌词响应（网易云匹配） */
 export interface LyricResponse {
   code: number
   message?: string
-  data?: string
+  /** 旧版为拼接字符串；新版主进程返回 { lrc, tv, rv } 三段（原文/翻译/罗马音） */
+  data?: string | { lrc?: string; tv?: string; rv?: string }
   source?: string
 }
 
 /** 为当前曲目自动匹配歌词（主进程按标题/作者搜网易云），data 为合并翻译的 LRC 文本 */
 export async function getLyric(title: string, artist: string): Promise<LyricResponse> {
-  return api.getLyric({ title, artist })
+  const res = await api.getLyric({ title, artist })
+  console.log('[bili-recv] getLyric 返回:', res)
+  return res
 }
 
 /** 网易云搜索候选歌曲 */
@@ -122,10 +148,14 @@ export interface NeteaseSong {
   duration: number
 }
 export async function searchLyric(keyword: string): Promise<NeteaseSong[]> {
-  return api.searchLyric(keyword)
+  const res = await api.searchLyric(keyword)
+  console.log('[bili-recv] searchLyric 返回:', res)
+  return res
 }
 
 /** 按网易云歌曲 id 取歌词 */
 export async function getLyricById(id: number): Promise<LyricResponse> {
-  return api.getLyricById(id)
+  const res = await api.getLyricById(id)
+  console.log('[bili-recv] getLyricById 返回:', res)
+  return res
 }
