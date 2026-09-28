@@ -70,6 +70,14 @@ const electronMyAPI = {
       ipcRenderer.invoke('bili:get-music-info', bvid),
     getMusicEpisodes: (bvid: string): Promise<any> =>
       ipcRenderer.invoke('bili:get-episodes', bvid),
+    getFavFolders: (upMid: number): Promise<any> =>
+      ipcRenderer.invoke('bili:get-fav-folders', upMid),
+    getFavCollectedFolders: (upMid: number): Promise<any> =>
+      ipcRenderer.invoke('bili:get-fav-collected-folders', upMid),
+    getFavResourceIds: (mediaId: number): Promise<any> =>
+      ipcRenderer.invoke('bili:get-fav-resource-ids', mediaId),
+    getFavResourceInfos: (resources: string): Promise<any> =>
+      ipcRenderer.invoke('bili:get-fav-resource-infos', resources),
     getMusicRegionFeed: (displayId?: number, requestCnt?: number): Promise<any> =>
       ipcRenderer.invoke('bili:region-feed', displayId, requestCnt),
     getMusicPlayUrl: (bvid: string, cid: number): Promise<any> =>

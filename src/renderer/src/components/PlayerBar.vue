@@ -63,8 +63,44 @@
       <p v-if="player.audioError" class="player-error">{{ player.audioError }}</p>
     </div>
 
-    <!-- 右侧：操作（歌单 / 播放队列） -->
+    <!-- 右侧：音量控制 + 操作（歌单 / 播放队列）。宽度与左侧对等，使中间控制区真正居中 -->
     <div class="player-actions">
+      <div class="volume-control">
+        <button
+          class="action-btn volume-btn"
+          :title="player.volume === 0 ? '取消静音' : '静音'"
+          @click="playerApi.toggleMute()"
+        >
+          <svg v-if="player.volume === 0" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+            <path d="M11 5 6 9H3v6h3l5 4z"/>
+            <line x1="22" y1="9" x2="16" y2="15"/>
+            <line x1="16" y1="9" x2="22" y2="15"/>
+          </svg>
+          <svg v-else-if="volumeVal < 0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+            <path d="M11 5 6 9H3v6h3l5 4z"/>
+            <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+            <path d="M11 5 6 9H3v6h3l5 4z"/>
+            <path d="M15.5 8.5a5 5 0 0 1 0 7"/>
+            <path d="M18.5 5.5a9 9 0 0 1 0 13"/>
+          </svg>
+        </button>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          :value="volumeVal"
+          class="volume-slider"
+          :style="{ '--vol-pct': volumeVal * 100 + '%' }"
+          title="音量"
+          @input="onVolumeInput"
+        />
+      </div>
       <button class="action-btn" title="添加到歌单" :disabled="!current" @click="openPlaylistModal">
         <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
       </button>
@@ -87,15 +123,18 @@
 
   <!-- 添加到歌单 / 歌单管理弹窗 -->
   <PlaylistManager v-if="playlistStore.showPlaylistModal" />
+  <!-- 多P卡片「添加到歌单」分P选择弹窗 -->
+  <AddPMusicModal v-if="playlistStore.showPAddModal" />
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { usePlayerStore } from '../stores/player'
 import { usePlaylistStore } from '../stores/playlist'
 import { useAudioPlayer } from '../composables/useAudioPlayer'
 import QueuePanel from './QueuePanel.vue'
 import PlaylistManager from './PlaylistManager.vue'
+import AddPMusicModal from './AddPMusicModal.vue'
 
 const player = usePlayerStore()
 const playerApi = useAudioPlayer()
@@ -117,6 +156,22 @@ function onTrackClick(e: MouseEvent): void {
   const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
   playerApi.seekToTime(ratio * player.duration)
 }
+
+/** 本地镜像音量：滑块由本地 ref 驱动，避免 :value 直接绑 store 造成拖动往返卡顿 */
+const volumeVal = ref(player.volume)
+function onVolumeInput(e: Event): void {
+  const v = parseFloat((e.target as HTMLInputElement).value)
+  if (isNaN(v)) return
+  volumeVal.value = v
+  playerApi.setVolume(v)
+}
+// 静音/取消静音等来自 store 的变化反向同步到滑块
+watch(
+  () => player.volume,
+  (v) => {
+    if (Math.abs(v - volumeVal.value) > 0.001) volumeVal.value = v
+  }
+)
 
 const onCoverError = (e: Event): void => {
   ;(e.target as HTMLImageElement).style.display = 'none'
@@ -326,7 +381,60 @@ const onCoverError = (e: Event): void => {
 .player-actions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: flex-end;
+  gap: 6px;
+  /* 与左侧 current-track 等宽，使中间控制区在窗口内真正居中 */
+  width: 200px;
+  flex-shrink: 0;
+}
+.volume-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  border-radius: 16px;
+  transition: background 0.18s ease;
+}
+.volume-control:hover {
+  background: var(--chrome-hover, rgba(255, 255, 255, 0.06));
+}
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 96px;
+  height: 6px;
+  border-radius: 6px;
+  /* 填充轨：品牌色到当前音量位置，之后为弱轨道色 */
+  background: linear-gradient(
+    to right,
+    var(--brand, #ec6da4) 0%,
+    var(--brand, #ec6da4) var(--vol-pct, 100%),
+    var(--chrome-border, rgba(255, 255, 255, 0.18)) var(--vol-pct, 100%),
+    var(--chrome-border, rgba(255, 255, 255, 0.18)) 100%
+  );
+  outline: none;
+  cursor: pointer;
+}
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--brand, #ec6da4);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.35);
+  transition: transform 0.12s ease;
+}
+.volume-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+.volume-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--brand, #ec6da4);
 }
 .action-btn {
   width: 32px;

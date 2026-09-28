@@ -60,7 +60,7 @@
           </div>
           <div class="action-text">
             <div class="action-title">{{ item.title }}</div>
-            <div class="action-sub">{{ item.key === 'download' ? downloadSub : item.sub }}</div>
+            <div class="action-sub">{{ item.key === 'history' ? historySub : item.key === 'download' ? downloadSub : item.sub }}</div>
           </div>
         </div>
       </div>
@@ -70,7 +70,7 @@
     <template v-else-if="activeTab === 'history'">
       <div class="list-header">
         <h3 class="list-title">播放历史</h3>
-        <button class="clear-btn" @click="clearHistory">
+        <button v-if="playerStore.playHistory.length" class="clear-btn btn-danger" @click="clearHistory">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
             <polyline points="3 6 5 6 21 6"/>
             <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
@@ -80,22 +80,23 @@
         </button>
       </div>
 
-      <div class="history-list">
+      <div v-if="playerStore.playHistory.length" class="history-list">
         <div
           class="history-item"
-          v-for="(item, idx) in historyList"
-          :key="item.title + idx"
-          @click="playHistory(item)"
+          v-for="(item, idx) in playerStore.playHistory"
+          :key="item.bvid + '-' + idx"
+          @click="playMusic(item)"
         >
           <span class="rank">{{ idx + 1 }}</span>
-          <div class="cover-sm" :style="{ background: item.cover }"></div>
+          <img class="cover-sm" :src="item.cover" :alt="item.title" loading="lazy" />
           <div class="history-info">
             <div class="history-title">{{ item.title }}</div>
-            <div class="history-up">{{ item.up }}</div>
+            <div class="history-up">{{ item.author }}</div>
           </div>
-          <span class="history-duration">{{ item.duration }}</span>
+          <span class="history-duration">{{ formatDuration(item.duration) }}</span>
         </div>
       </div>
+      <p v-else class="history-empty">暂无播放历史，去首页听几首歌吧</p>
     </template>
 
     <!-- ==== 设置 Tab ==== -->
@@ -369,6 +370,8 @@ import type { AudioQuality, LyricDisplayMode } from '../stores/settings'
 import { useDownloadStore } from '../stores/download'
 import { useUserStore } from '../stores/user'
 import { useRecommendStore } from '../stores/recommend'
+import { usePlayerStore } from '../stores/player'
+import { useAudioPlayer } from '../composables/useAudioPlayer'
 import AppSelect from '../components/common/AppSelect.vue'
 import {
   EQ_BANDS,
@@ -406,7 +409,7 @@ const actions = [
   {
     key: 'history',
     title: '播放历史',
-    sub: '6 首',
+    sub: '暂无记录', // 动态显示 historySub（真实条数）
     iconBg: 'var(--brand-grad)',
     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
   },
@@ -426,46 +429,23 @@ const actions = [
   }
 ]
 
-// ============ 播放历史 ============
-interface HistoryItem {
-  title: string
-  up: string
-  duration: string
-  cover: string
-}
+// ============ 播放器 store + 播放控制（播放历史列表点击播放用；歌单模块已迁至 PlaylistView） ============
+const playerStore = usePlayerStore()
+const { playMusic } = useAudioPlayer()
 
-const historyList = ref<HistoryItem[]>([
-  {
-    title: '【经典老歌】1~100',
-    up: '16姐的茶话会',
-    duration: '440:41',
-    cover: 'linear-gradient(135deg, #8b0000 0%, #dc143c 50%, #ff6347 100%)'
-  },
-  {
-    title: '"都曾被民谣一瞬间击中过"【那些值得火遍全网的宝藏歌曲合集 part 6】音乐推荐 | 音乐可视化 | 动态歌词',
-    up: 'Music小铁匠',
-    duration: '41:15',
-    cover: 'linear-gradient(135deg, #1a3a5c 0%, #2e86c1 50%, #5dade2 100%)'
-  },
-  {
-    title: '【周杰伦】50首精选合集/后台播放/无损音质/HIFI音质/华语流行音乐才是最叼的',
-    up: '超级爱下雨天',
-    duration: '222:28',
-    cover: 'linear-gradient(135deg, #2d1b0e 0%, #b8860b 50%, #ffd700 100%)'
-  },
-  {
-    title: '【4K珍藏】陈小春《街角的晚风》珍稀神级现场!',
-    up: 'B612音乐',
-    duration: '4:02',
-    cover: 'linear-gradient(135deg, #4a0e4e 0%, #8b4d8b 50%, #dda0dd 100%)'
-  },
-  {
-    title: '【4K Hi-Res】鼓楼-赵雷 这是个拥挤的地方 而我却很孤单',
-    up: '你去巴黎我在北京',
-    duration: '4:42',
-    cover: 'linear-gradient(135deg, #0c1445 0%, #1e3a5f 50%, #4169e1 100%)'
-  }
-])
+// ============ 播放历史（真实数据：player store 播放时记录，localStorage 持久化） ============
+const historySub = computed(() => {
+  const n = playerStore.playHistory.length
+  return n > 0 ? `${n} 首` : '暂无记录'
+})
+
+/** 秒 → mm:ss（播放历史行时长显示用） */
+function formatDuration(seconds: number): string {
+  if (!seconds || seconds <= 0) return '--:--'
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${String(s).padStart(2, '0')}`
+}
 
 // ============ 设置状态 ============
 // 主题模式 + 主题色：唯一来源 = theme store（与顶栏、刷新、全局联动）
@@ -586,12 +566,7 @@ const onActionClick = (key: string): void => {
 }
 
 const clearHistory = (): void => {
-  console.log('清空播放历史')
-  historyList.value = []
-}
-
-const playHistory = (item: HistoryItem): void => {
-  console.log('重新播放:', item.title)
+  playerStore.clearPlayHistory()
 }
 
 /** 唤起 TopBar 里的扫码登录弹窗（开关在 user store 共享） */
@@ -819,27 +794,6 @@ if (activeTab.value === 'settings') {
   margin-top: 4px;
 }
 
-.login-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 20px;
-  font-size: 13px;
-  font-weight: 600;
-  color: #fff;
-  background: var(--brand-grad);
-  border: none;
-  border-radius: 18px;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(var(--brand-rgb), 0.4);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.login-btn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(var(--brand-rgb), 0.5);
-}
-
 /* 已登录态的「退出登录」用幽灵按钮，与渐变登录按钮区分 */
 .logout-btn {
   background: transparent;
@@ -908,42 +862,6 @@ if (activeTab.value === 'settings') {
   margin-top: 3px;
 }
 
-/* ============ 列表公共头部 ============ */
-.list-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.list-title {
-  font-size: 18px;
-  font-weight: 700;
-  margin: 0;
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.clear-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 14px;
-  font-size: 12px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.6);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.clear-btn:hover {
-  color: #fff;
-  background: rgba(232, 17, 35, 0.2);
-  border-color: rgba(232, 17, 35, 0.4);
-}
-
 /* ============ 播放历史列表 ============ */
 .history-list {
   display: flex;
@@ -968,15 +886,7 @@ if (activeTab.value === 'settings') {
   border-color: rgba(var(--brand-rgb), 0.25);
 }
 
-.rank {
-  width: 24px;
-  font-size: 14px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.35);
-  text-align: center;
-  flex-shrink: 0;
-}
-
+/* 序号样式：基础 .rank 已全局化，这里只保留历史列表前三名的强调色 */
 .history-item:nth-child(1) .rank {
   color: var(--brand);
   font-size: 18px;
@@ -995,33 +905,15 @@ if (activeTab.value === 'settings') {
   height: 48px;
   border-radius: 8px;
   flex-shrink: 0;
+  object-fit: cover;
 }
 
-.history-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.history-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.9);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.history-up {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
-  margin-top: 3px;
-}
-
-.history-duration {
+/* 历史 tab 空状态（原复用歌单的 pl-empty，歌单迁出后独立成类） */
+.history-empty {
+  padding: 32px 0;
+  text-align: center;
   font-size: 13px;
   color: rgba(255, 255, 255, 0.35);
-  flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
 }
 
 /* ============ 设置卡片 ============ */
@@ -1337,66 +1229,16 @@ if (activeTab.value === 'settings') {
   color: rgba(40, 40, 46, 0.55);
 }
 
-.light .list-title {
-  color: rgba(24, 24, 28, 0.9);
-}
-
-.light .clear-btn {
-  color: rgba(40, 40, 46, 0.6);
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.08);
-}
-
-.light .clear-btn:hover {
-  color: #e81123;
-  background: rgba(232, 17, 35, 0.08);
-  border-color: rgba(232, 17, 35, 0.3);
-}
-
 .light .history-item {
   background: rgba(0, 0, 0, 0.03);
   border-color: rgba(0, 0, 0, 0.05);
 }
 
-.light .history-title {
-  color: rgba(24, 24, 28, 0.9);
-}
-
-.light .history-up,
-.light .history-duration {
-  color: rgba(40, 40, 46, 0.45);
-}
-
-.light .rank {
-  color: rgba(24, 24, 28, 0.35);
-}
+/* 共享行样式（history-title/history-up/history-duration/rank）及其浅色覆盖已全局化 */
 
 /* ============ 设置区小按钮（应用/撤销/重置） ============ */
 .slider-row {
   gap: 8px;
-}
-
-.mini-btn {
-  padding: 5px 12px;
-  font-size: 12px;
-  font-weight: 500;
-  border-radius: 8px;
-  cursor: pointer;
-  white-space: nowrap;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.75);
-  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.mini-btn:hover:not(:disabled) {
-  border-color: rgba(var(--brand-rgb), 0.45);
-  color: var(--brand);
-}
-
-.mini-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
 }
 
 /* 有未应用修改时，「应用」高亮+脉冲 */
@@ -1545,12 +1387,6 @@ if (activeTab.value === 'settings') {
 }
 
 /* ============ 新增控件的浅色模式 ============ */
-.light .mini-btn {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.1);
-  color: rgba(24, 24, 28, 0.75);
-}
-
 .light .eq-body {
   background: rgba(0, 0, 0, 0.03);
   border-color: rgba(0, 0, 0, 0.06);
@@ -1573,6 +1409,8 @@ if (activeTab.value === 'settings') {
   color: rgba(40, 40, 46, 0.45);
 }
 
+/* 我的歌单样式（pl-* / fav-*）已整体迁至 PlaylistView.vue */
+
 /* ============ 下载设置 / 缓存管理 / 关于 ============ */
 .path-text {
   display: block;
@@ -1582,17 +1420,7 @@ if (activeTab.value === 'settings') {
   white-space: nowrap;
 }
 
-/* 危险按钮（清理缓存） */
-.btn-danger {
-  color: #ff6b6b;
-  border-color: rgba(255, 107, 107, 0.35);
-}
-
-.btn-danger:hover:not(:disabled) {
-  color: #fff;
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5253 100%);
-  border-color: transparent;
-}
+/* 危险按钮 .btn-danger 与确认弹窗 .modal-* 已全局化到 main.css */
 
 /* 关于卡片（内容直接铺在行容器内） */
 .about-row {
@@ -1630,52 +1458,6 @@ if (activeTab.value === 'settings') {
   color: rgba(255, 255, 255, 0.45);
 }
 
-/* ============ 确认弹窗 ============ */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 999;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.modal {
-  background: rgba(30, 28, 36, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  padding: 24px;
-  max-width: 420px;
-  width: calc(100% - 48px);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-}
-
-.modal h2 {
-  margin: 0 0 12px;
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.modal p {
-  margin: 0 0 20px;
-  font-size: 13px;
-  line-height: 1.7;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.modal p b {
-  color: var(--brand);
-}
-
-.modal-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
 /* 浅色模式补充 */
 .light .about-header .version {
   color: rgba(40, 40, 46, 0.5);
@@ -1684,15 +1466,5 @@ if (activeTab.value === 'settings') {
 
 .light .about-desc {
   color: rgba(40, 40, 46, 0.55);
-}
-
-.light .modal {
-  background: rgba(255, 255, 255, 0.98);
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
-}
-
-.light .modal p {
-  color: rgba(40, 40, 46, 0.65);
 }
 </style>

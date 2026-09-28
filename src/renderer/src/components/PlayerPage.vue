@@ -5,6 +5,7 @@ import { useSettingsStore } from '../stores/settings'
 import { useAudioPlayer, buildEpisodes } from '../composables/useAudioPlayer'
 import { getMusicEpisodes, getMusicInfo } from '../apis/bilibili'
 import { formatDuration, fixCoverUrl } from '../utils/bilibili'
+import { COVER_FALLBACK } from '../utils/coverFallback'
 import LyricDisplay from './player/LyricDisplay.vue'
 import AudioVisualizer from './audio/AudioVisualizer.vue'
 import AlbumRipple from './audio/AlbumRipple.vue'
@@ -228,7 +229,7 @@ function cover(url: string): string {
                   <img
                     :src="cover(player.current.cover)"
                     :alt="player.current.title"
-                    @error="($event.target as HTMLImageElement).src='https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400'"
+                    @error="($event.target as HTMLImageElement).src=COVER_FALLBACK"
                   >
                 </div>
                 <AlbumRipple

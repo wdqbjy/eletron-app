@@ -1,6 +1,42 @@
 import { defineStore } from 'pinia'
 import type { RecommendedMusic } from '../apis/bilibili'
 
+const PLAY_HISTORY_KEY = 'app-play-history'
+const PLAY_HISTORY_MAX = 50
+const VOLUME_KEY = 'app-player-volume'
+
+function loadPlayHistory(): RecommendedMusic[] {
+  try {
+    const raw = localStorage.getItem(PLAY_HISTORY_KEY)
+    const parsed = raw ? JSON.parse(raw) : null
+    return Array.isArray(parsed) ? parsed : []
+  } catch (_) {
+    return []
+  }
+}
+
+function persistPlayHistory(list: RecommendedMusic[]) {
+  try {
+    localStorage.setItem(PLAY_HISTORY_KEY, JSON.stringify(list.slice(0, PLAY_HISTORY_MAX)))
+  } catch (_) {}
+}
+
+/** 音量持久化：0~1，缺省为 1（满音量） */
+function loadVolume(): number {
+  try {
+    const raw = localStorage.getItem(VOLUME_KEY)
+    const v = raw ? parseFloat(raw) : NaN
+    return isNaN(v) ? 1 : Math.min(1, Math.max(0, v))
+  } catch (_) {
+    return 1
+  }
+}
+function persistVolume(v: number) {
+  try {
+    localStorage.setItem(VOLUME_KEY, String(v))
+  } catch (_) {}
+}
+
 /** 播放模式：order=顺序、loop=列表循环、single=单曲循环、shuffle=随机 */
 export type PlayMode = 'order' | 'loop' | 'single' | 'shuffle'
 export const PLAY_MODES: PlayMode[] = ['order', 'loop', 'single', 'shuffle']
@@ -55,6 +91,11 @@ export const usePlayerStore = defineStore('player', {
     /** 队列是否来自多分P(合集)视频展开（同一 bvid 多 cid）。播单曲时切回推荐队列 */
     queueIsEpisodes: false,
     showQueuePanel: false,
+    /** 播放历史：最新在前，最多 50 条，localStorage 持久化 */
+    playHistory: loadPlayHistory(),
+    /** 音量 0~1，持久化到 localStorage；lastVolume 用于取消静音时恢复 */
+    volume: loadVolume(),
+    lastVolume: loadVolume() || 1,
     /**
      * 当前多分P合集信息。
      * 点击合集卡片时由 useAudioPlayer 填充：title=视频标题(如「民谣100首」)，episodes=展开后的分P。
@@ -133,6 +174,39 @@ export const usePlayerStore = defineStore('player', {
     /** 设置当前合集信息（多分P卡片点击时调用）；传 null 清空（播单曲时） */
     setCurrentSeries(series: { title: string; episodes: RecommendedMusic[] } | null) {
       this.currentSeries = series
+    },
+    // ===== 播放历史 =====
+    /** 记录一次播放：按 bvid 去重置顶，上限 50 条并落盘 */
+    recordPlayHistory(music: RecommendedMusic) {
+      if (!music?.bvid) return
+      this.playHistory = this.playHistory.filter((m) => m.bvid !== music.bvid)
+      this.playHistory.unshift(music)
+      if (this.playHistory.length > PLAY_HISTORY_MAX) {
+        this.playHistory = this.playHistory.slice(0, PLAY_HISTORY_MAX)
+      }
+      persistPlayHistory(this.playHistory)
+    },
+    clearPlayHistory() {
+      this.playHistory = []
+      persistPlayHistory(this.playHistory)
+    },
+    // ===== 音量 =====
+    /** 设置音量 0~1；>0 时同步记录 lastVolume，0 视为静音 */
+    setVolume(v: number) {
+      const clamped = Math.min(1, Math.max(0, v))
+      this.volume = clamped
+      if (clamped > 0) this.lastVolume = clamped
+      persistVolume(clamped)
+    },
+    /** 静音/取消静音：记录当前音量后归零，或恢复上次非零音量 */
+    toggleMute() {
+      if (this.volume > 0) {
+        this.lastVolume = this.volume
+        this.volume = 0
+      } else {
+        this.volume = this.lastVolume > 0 ? this.lastVolume : 1
+      }
+      persistVolume(this.volume)
     }
   }
 })

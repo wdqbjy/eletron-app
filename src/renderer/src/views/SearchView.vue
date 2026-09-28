@@ -54,6 +54,9 @@
             <button class="download-button" title="下载" @click.stop="downloadMusic(toMusic(music))">
               <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
             </button>
+            <button class="add-button" title="添加到歌单" @click.stop="addToPlaylist(music)">
+              <svg viewBox="0 0 24 24" fill="white" width="16" height="16"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            </button>
           </div>
         </div>
         <h4 class="card-title">{{ music.title }}</h4>
@@ -70,19 +73,21 @@
 
 <script setup lang="ts">
 import { useSearchStore } from '../stores/search'
+import { usePlaylistStore } from '../stores/playlist'
 import { useMusic } from '../composables/useMusic'
 import { useAudioPlayer } from '../composables/useAudioPlayer'
 import { useDownload } from '../composables/useDownload'
 import { formatPlayCount, formatDuration, parseDuration } from '../utils/bilibili'
+import { COVER_FALLBACK } from '../utils/coverFallback'
 import type { SearchResultItem, RecommendedMusic } from '../apis/bilibili'
 
 const searchStore = useSearchStore()
+const playlistStore = usePlaylistStore()
 const { handleSearch } = useMusic()
 const audioPlayer = useAudioPlayer()
 const { downloadMusic } = useDownload()
 
-const fallbackCover =
-  'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400'
+const fallbackCover = COVER_FALLBACK
 
 /** 搜索结果项 → 播放器接受的 RecommendedMusic（duration 从 mm:ss 字符串转秒） */
 function toMusic(item: SearchResultItem): RecommendedMusic {
@@ -101,6 +106,11 @@ function toMusic(item: SearchResultItem): RecommendedMusic {
 
 function playMusic(item: SearchResultItem): void {
   audioPlayer.playMusic(toMusic(item))
+}
+
+// 卡片「添加到歌单」：拉分P → 多P开分P弹窗，单P直接单曲弹窗
+function addToPlaylist(item: SearchResultItem): void {
+  playlistStore.openAddFlow(toMusic(item))
 }
 
 function onCoverError(e: Event): void {
@@ -389,6 +399,31 @@ async function onSearch(): Promise<void> {
 }
 
 .download-button:active {
+  transform: scale(0.88);
+}
+
+/* 「添加到歌单」：与下载按钮同规格（pink-music p-add-btn） */
+.add-button {
+  width: 34px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.add-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.1);
+}
+
+.add-button:active {
   transform: scale(0.88);
 }
 

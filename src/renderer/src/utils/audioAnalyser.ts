@@ -22,6 +22,10 @@ let currentSource: MediaElementAudioSourceNode | null = null
 let currentAudio: HTMLAudioElement | null = null
 let analyser: AnalyserNode | null = null
 let compressor: DynamicsCompressorNode | null = null
+/** 主音量 GainNode：接在链尾 compressor → destination 之间。
+ *  必须用 GainNode 控制：audio 元素被 createMediaElementSource 接入图后，
+ *  其 .volume 属性被旁路失效，改 .volume 听不到任何变化。 */
+let volumeGain: GainNode | null = null
 
 function ensureContext(): AudioContext | null {
   if (audioContext) return audioContext
@@ -60,6 +64,9 @@ export function attachAudioAnalyser(audioEl: HTMLAudioElement | null): AnalyserN
     if (compressor) {
       try { compressor.disconnect() } catch (_) {}
     }
+    if (volumeGain) {
+      try { volumeGain.disconnect() } catch (_) {}
+    }
 
     currentAudio = audioEl
     currentSource = ctx.createMediaElementSource(audioEl)
@@ -78,7 +85,11 @@ export function attachAudioAnalyser(audioEl: HTMLAudioElement | null): AnalyserN
     compressor.attack.value = 0.003
     compressor.release.value = 0.25
 
-    // 接线：source → (EQ 链) → analyser → compressor → destination
+    // 主音量 GainNode（链尾，控制实际输出音量）
+    volumeGain = ctx.createGain()
+    volumeGain.gain.value = 1
+
+    // 接线：source → (EQ 链) → analyser → compressor → volumeGain → destination
     if (eq) {
       currentSource.connect(eq.input)
       eq.output.connect(analyser)
@@ -87,7 +98,8 @@ export function attachAudioAnalyser(audioEl: HTMLAudioElement | null): AnalyserN
       currentSource.connect(analyser)
     }
     analyser.connect(compressor)
-    compressor.connect(ctx.destination)
+    compressor.connect(volumeGain)
+    volumeGain.connect(ctx.destination)
     return analyser
   } catch (err) {
     console.error('[audioAnalyser] attach 失败:', err)
@@ -97,6 +109,15 @@ export function attachAudioAnalyser(audioEl: HTMLAudioElement | null): AnalyserN
 
 export function getAnalyser(): AnalyserNode | null {
   return analyser
+}
+
+/** 设置主音量（0~1），作用于链尾 GainNode；图未就绪时静默忽略 */
+export function setAnalyserVolume(v: number): void {
+  if (volumeGain && audioContext) {
+    try {
+      volumeGain.gain.value = Math.min(1, Math.max(0, v))
+    } catch (_) {}
+  }
 }
 
 export function getAudioContext(): AudioContext | null {
@@ -112,6 +133,7 @@ export function destroyAudioAnalyser(): void {
   try { if (currentSource) currentSource.disconnect() } catch (_) {}
   try { if (analyser) analyser.disconnect() } catch (_) {}
   try { if (compressor) compressor.disconnect() } catch (_) {}
+  try { if (volumeGain) volumeGain.disconnect() } catch (_) {}
   destroyEQ()
   if (audioContext) {
     audioContext.close().catch(() => {})
@@ -121,4 +143,5 @@ export function destroyAudioAnalyser(): void {
   currentAudio = null
   analyser = null
   compressor = null
+  volumeGain = null
 }

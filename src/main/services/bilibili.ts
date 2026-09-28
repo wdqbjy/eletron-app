@@ -2,11 +2,55 @@ import axios, { AxiosInstance } from 'axios'
 import { app, session, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
+import { createHash } from 'crypto'
 
 const BILIBILI_BASE = 'https://api.bilibili.com'
 const BILIBILI_WEB = 'https://passport.bilibili.com'
 /** 匿名追踪 cookie 引导接口：回 buvid3/buvid4，避免完全无 Cookie 被 B 站降级/风控 */
 const FINGER_SPI = `${BILIBILI_BASE}/x/frontend/finger/spi`
+
+// ============ wbi 签名（收藏夹 /x/v3/fav/* 接口需要） ============
+const mixinKeyEncTab = [
+  46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29,
+  28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25,
+  54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52
+]
+function getMixinKey(orig: string): string {
+  return mixinKeyEncTab.map((n) => orig[n]).join('').slice(0, 32)
+}
+function wbiSignParams(params: Record<string, unknown>, imgKey: string, subKey: string) {
+  if (!imgKey || !subKey) return { ...params }
+  const mixinKey = getMixinKey(imgKey + subKey)
+  const wts = Math.round(Date.now() / 1000)
+  const enriched: Record<string, unknown> = { ...params, wts }
+  const keys = Object.keys(enriched)
+    .filter((k) => enriched[k] !== undefined && enriched[k] !== null && enriched[k] !== '')
+    .sort()
+  const chrFilter = /[!'()*]/g
+  const query = keys
+    .map((k) => {
+      const v = String(enriched[k]).replace(chrFilter, '')
+      return `${encodeURIComponent(k)}=${encodeURIComponent(v)}`
+    })
+    .join('&')
+  const wRid = createHash('md5').update(query + mixinKey).digest('hex')
+  return { ...enriched, w_rid: wRid }
+}
+function extractWbiKeys(wbiImg: { img_url?: string; sub_url?: string }) {
+  if (!wbiImg) return { imgKey: '', subKey: '' }
+  const extract = (u?: string) => (u ? u.slice(u.lastIndexOf('/') + 1, u.lastIndexOf('.')) : '')
+  return { imgKey: extract(wbiImg.img_url), subKey: extract(wbiImg.sub_url) }
+}
+const wbiKeysCache = { imgKey: '', subKey: '' }
+function updateWbiKeys(wbiImg: { img_url?: string; sub_url?: string }): void {
+  if (!wbiImg) return
+  const { imgKey, subKey } = extractWbiKeys(wbiImg)
+  if (imgKey && subKey) {
+    wbiKeysCache.imgKey = imgKey
+    wbiKeysCache.subKey = subKey
+  }
+}
+
 const UserAgent =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -68,6 +112,14 @@ class BilibiliApi {
       for (const [k, v] of Object.entries(this.cookies)) merged.set(k, v)
       const cookieStr = [...merged.entries()].map(([k, v]) => `${k}=${v}`).join('; ')
       if (cookieStr) config.headers.Cookie = cookieStr
+      // 收藏夹 /x/v3/fav/* 接口需要 wbi 签名（img/sub key 从 nav 接口缓存）
+      if (config.url && config.url.includes('/x/v3/fav/') && wbiKeysCache.imgKey) {
+        config.params = wbiSignParams(
+          (config.params as Record<string, unknown>) || {},
+          wbiKeysCache.imgKey,
+          wbiKeysCache.subKey
+        )
+      }
       // 请求在【主进程 / Node 侧】发出，所以不显示在渲染层 DevTools 网络面板，
       // 只会打印在这里的终端。这段日志让你能确认请求确实打到了 B 站。
       const hasSess = merged.has('SESSDATA')
@@ -335,6 +387,10 @@ class BilibiliApi {
     try {
       await this.refreshCookiesFromSession()
       const resp = await this.axios.get(`${BILIBILI_BASE}/x/web-interface/nav`)
+      // 缓存 wbi img/sub key（收藏夹接口签名用）
+      if ((resp.data as any)?.data?.wbi_img) {
+        updateWbiKeys((resp.data as any).data.wbi_img)
+      }
       return resp.data
     } catch (err: any) {
       console.error('[Bilibili] get userinfo failed:', err.message)
@@ -414,6 +470,72 @@ class BilibiliApi {
       return resp.data
     } catch (err: any) {
       console.error('[Bilibili] get episodes failed:', err.message)
+      return { code: -1, message: err.message }
+    }
+  }
+
+  // ============ B 站收藏夹（登录态 + wbi 签名，见拦截器） ============
+
+  /**
+   * 用户创建的收藏夹列表：GET /x/v3/fav/folder/created/list
+   * { code, data: { list: [{ id, title, media_count, cover }] } }
+   */
+  async getFavFolderCreatedList(upMid: number, pn = 1, ps = 50): Promise<any> {
+    try {
+      const resp = await this.axios.get(`${BILIBILI_BASE}/x/v3/fav/folder/created/list`, {
+        params: { up_mid: upMid, pn, ps, web_location: '333.1387' }
+      })
+      return resp.data
+    } catch (err: any) {
+      console.error('[Bilibili] get fav folder list failed:', err.message)
+      return { code: -1, message: err.message }
+    }
+  }
+
+  /**
+   * 用户收藏的（他人的）收藏夹列表：GET /x/v3/fav/folder/collected/list
+   * { code, data: { list: [{ id, title, media_count, cover, state }] } }
+   */
+  async getFavFolderCollectedList(upMid: number, pn = 1, ps = 50): Promise<any> {
+    try {
+      const resp = await this.axios.get(`${BILIBILI_BASE}/x/v3/fav/folder/collected/list`, {
+        params: { up_mid: upMid, pn, ps, platform: 'web' }
+      })
+      return resp.data
+    } catch (err: any) {
+      console.error('[Bilibili] get collected fav folder list failed:', err.message)
+      return { code: -1, message: err.message }
+    }
+  }
+
+  /**
+   * 收藏夹全部条目 id（不分页，防 -412）：GET /x/v3/fav/resource/ids
+   * { code, data: [{ id, type, bvid, cid, part, duration ... }] }
+   */
+  async getFavResourceIds(mediaId: number): Promise<any> {
+    try {
+      const resp = await this.axios.get(`${BILIBILI_BASE}/x/v3/fav/resource/ids`, {
+        params: { media_id: mediaId, platform: 'web' }
+      })
+      return resp.data
+    } catch (err: any) {
+      console.error('[Bilibili] get fav resource ids failed:', err.message)
+      return { code: -1, message: err.message }
+    }
+  }
+
+  /**
+   * 批量收藏详情（resources 形如 "id:type,id:type"，≤50 个/批）：
+   * GET /x/v3/fav/resource/infos → { code, data: [{ id, type, bvid, cid, title, upper, cover, duration, cnt_info, attr }] }
+   */
+  async getFavResourceInfos(resources: string): Promise<any> {
+    try {
+      const resp = await this.axios.get(`${BILIBILI_BASE}/x/v3/fav/resource/infos`, {
+        params: { resources, platform: 'web' }
+      })
+      return resp.data
+    } catch (err: any) {
+      console.error('[Bilibili] get fav resource infos failed:', err.message)
       return { code: -1, message: err.message }
     }
   }

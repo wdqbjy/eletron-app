@@ -397,8 +397,8 @@ class ElectronMyApp {
 
   private createWindow(): void {
     this.mainWindow = new BrowserWindow({
-      width: 900,
-      height: 670,
+      width: 1100,
+      height: 870,
       show: false,
       frame: false, // 禁用原生边框
       autoHideMenuBar: true,
@@ -535,6 +535,43 @@ class ElectronMyApp {
         return await bilibiliApi.getMusicRegionFeed(did, cnt)
       } catch (e) {
         console.error('[sec] blocked bili:region-feed', e)
+        return toSecurityFailure(e)
+      }
+    })
+    // ===== B 站收藏夹（需登录：主进程 cookie 自动带 SESSDATA，wbi 签名见拦截器） =====
+    ipcMain.handle('bili:get-fav-folders', async (_event, upMid) => {
+      try {
+        const mid = boundedInt(upMid, 'upMid', 1, 100000000000)
+        return await bilibiliApi.getFavFolderCreatedList(mid)
+      } catch (e) {
+        console.error('[sec] blocked bili:get-fav-folders', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:get-fav-collected-folders', async (_event, upMid) => {
+      try {
+        const mid = boundedInt(upMid, 'upMid', 1, 100000000000)
+        return await bilibiliApi.getFavFolderCollectedList(mid)
+      } catch (e) {
+        console.error('[sec] blocked bili:get-fav-collected-folders', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:get-fav-resource-ids', async (_event, mediaId) => {
+      try {
+        const id = boundedInt(mediaId, 'mediaId', 1, 100000000000)
+        return await bilibiliApi.getFavResourceIds(id)
+      } catch (e) {
+        console.error('[sec] blocked bili:get-fav-resource-ids', e)
+        return toSecurityFailure(e)
+      }
+    })
+    ipcMain.handle('bili:get-fav-resource-infos', async (_event, resources) => {
+      try {
+        const res = nonEmptyString(resources, 'resources', 50 * 24)
+        return await bilibiliApi.getFavResourceInfos(res)
+      } catch (e) {
+        console.error('[sec] blocked bili:get-fav-resource-infos', e)
         return toSecurityFailure(e)
       }
     })

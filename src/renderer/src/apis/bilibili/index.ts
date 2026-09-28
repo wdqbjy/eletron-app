@@ -75,6 +75,58 @@ export async function getMusicEpisodes(bvid: string): Promise<{ code: number; me
   return res
 }
 
+// ============ B 站收藏夹（需登录） ============
+/** 收藏夹（用户创建的）：/x/v3/fav/folder/created/list 的 list 项 */
+export interface BiliFavFolder {
+  id: number
+  title: string
+  media_count: number
+  cover?: string
+  /** 0 = 正常（pink-music 同步时只收 state===0 的项） */
+  state?: number
+  upper?: { mid?: number; name?: string }
+}
+
+/** 收藏条目：/x/v3/fav/resource/infos 的 data 项 */
+export interface BiliFavMedia {
+  id: number
+  type: number // 2 视频稿件 / 12 音频 / 21 视频合集(追更) / 24 电影
+  attr?: number // 非 0 视为失效
+  bvid?: string
+  bv_id?: string
+  cid?: number
+  title?: string
+  upper?: { name?: string; mid?: number }
+  cover?: string
+  duration?: number
+  cnt_info?: { play?: number; collect?: number }
+}
+
+export async function getFavFolders(
+  upMid: number
+): Promise<{ code: number; message: string; data?: { list: BiliFavFolder[] } }> {
+  return api.getFavFolders(upMid)
+}
+
+/** 收藏的（他人的）收藏夹：/x/v3/fav/folder/collected/list */
+export async function getFavCollectedFolders(
+  upMid: number
+): Promise<{ code: number; message: string; data?: { list: BiliFavFolder[] } }> {
+  return api.getFavCollectedFolders(upMid)
+}
+
+export async function getFavResourceIds(
+  mediaId: number
+): Promise<{ code: number; message: string; data?: Array<{ id: number; type: number }> }> {
+  return api.getFavResourceIds(mediaId)
+}
+
+export async function getFavResourceInfos(
+  resources: string
+): Promise<{ code: number; message: string; data?: BiliFavMedia[] }> {
+  return api.getFavResourceInfos(resources)
+}
+
 /** 首页「推荐音乐」卡片（x/web-interface/region/feed/rcmd archives[] 格式化后） */
 export interface RecommendedMusic {
   bvid: string
@@ -87,6 +139,10 @@ export interface RecommendedMusic {
   playCount: number
   pubdate: number
   rec_reason: string
+  /** B 站收藏条目专用：来源收藏夹内的 id/type（无 bvid 的音频项兜底用） */
+  favId?: number
+  favType?: number
+  isBiliFavoriteResource?: boolean
 }
 
 /** /x/web-interface/region/feed/rcmd 响应 —— B 站原始 payload */

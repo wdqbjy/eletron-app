@@ -5,7 +5,7 @@ import { useSettingsStore } from '../stores/settings'
 import { getMusicInfo, getMusicEpisodes, getMusicPlayUrl } from '../apis/bilibili'
 import type { RecommendedMusic } from '../apis/bilibili'
 import { selectAudioInfo } from '../utils/audio'
-import { attachAudioAnalyser } from '../utils/audioAnalyser'
+import { attachAudioAnalyser, setAnalyserVolume } from '../utils/audioAnalyser'
 
 /**
  * 真实音频播放 composable
@@ -35,6 +35,9 @@ function getAudio(): HTMLAudioElement {
     audioInstance.crossOrigin = 'anonymous'
     // 首次创建后接到分析器（单例元素只 attach 一次）
     attachAudioAnalyser(audioInstance)
+    // 恢复上次保存的音量（pinia 已安装，惰性取 store）
+    audioInstance.volume = usePlayerStore().volume
+    setAnalyserVolume(usePlayerStore().volume)
   }
   return audioInstance
 }
@@ -311,6 +314,8 @@ export function useAudioPlayer() {
     try {
       await audio.play()
       player.setIsPlaying(true)
+      // 真正开播才进历史（取流失败/自动播放被拦截不记录）
+      player.recordPlayHistory(music)
     } catch (err: any) {
       clearLoadingTimer()
       player.setIsLoading(false)
@@ -355,5 +360,18 @@ export function useAudioPlayer() {
     }
   }
 
-  return { playMusic, togglePlayPause, playNext, playPrevious, seekToTime }
+  /** 设置音量并立即应用到音频图（GainNode）+ 元素（无 Web Audio 时的降级） */
+  function setVolume(v: number) {
+    player.setVolume(v)
+    getAudio().volume = player.volume
+    setAnalyserVolume(player.volume)
+  }
+  /** 静音/取消静音并立即应用 */
+  function toggleMute() {
+    player.toggleMute()
+    getAudio().volume = player.volume
+    setAnalyserVolume(player.volume)
+  }
+
+  return { playMusic, togglePlayPause, playNext, playPrevious, seekToTime, setVolume, toggleMute }
 }
