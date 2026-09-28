@@ -339,6 +339,7 @@
         <div class="setting-row about-row">
           <div class="about-content">
             <div class="about-header">
+              <img class="about-logo" :src="logoImg" alt="logo" />
               <span class="logo-text text-gradient">{{ appInfo.name }}</span>
               <span class="version" v-if="appInfo.version">v{{ appInfo.version }}</span>
             </div>
@@ -373,6 +374,7 @@ import { useRecommendStore } from '../stores/recommend'
 import { usePlayerStore } from '../stores/player'
 import { useAudioPlayer } from '../composables/useAudioPlayer'
 import AppSelect from '../components/common/AppSelect.vue'
+import logoImg from '../assets/logo.png'
 import {
   EQ_BANDS,
   EQ_DB_MIN,
@@ -1441,6 +1443,12 @@ if (activeTab.value === 'settings') {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: 0.5px;
+}
+.about-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  flex-shrink: 0;
 }
 
 .about-header .version {

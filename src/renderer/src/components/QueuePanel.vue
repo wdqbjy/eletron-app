@@ -57,10 +57,20 @@ function isActive(m: { bvid: string; cid?: number }): boolean {
 
 function play(index: number) {
   const m = player.queue[index]
-  if (m) playerApi.playMusic(m)
+  // 传入当前队列，避免 playMusic 把队列覆盖成单曲、清掉其它歌曲
+  if (m) playerApi.playMusic(m, { queue: player.queue })
 }
 function remove(bvid: string) {
+  // 删除前记录是否为正在播放的曲目及其位置
+  const wasPlaying = player.current?.bvid === bvid
+  const idx = player.queue.findIndex((m) => m.bvid === bvid)
   player.removeFromQueue(bvid)
+  // 正在播放的曲目被删：自动切到队列中相邻的下一首（队尾则退到新的末尾）
+  if (wasPlaying && player.queue.length > 0) {
+    const nextIdx = Math.min(idx >= 0 ? idx : 0, player.queue.length - 1)
+    const next = player.queue[nextIdx]
+    if (next) playerApi.playMusic(next, { queue: player.queue })
+  }
 }
 function clear() {
   if (player.queue.length && confirm('清空播放队列？')) player.clearQueue()
@@ -77,11 +87,11 @@ function clear() {
   display: flex;
   flex-direction: column;
   border-radius: 14px;
-  background: rgba(var(--bg-rgb, 0,0,0), 0.92);
-  color: var(--chrome-text, #222);
+  background: rgba(20, 20, 24, 0.82);
+  color: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(20px) saturate(1.3);
   -webkit-backdrop-filter: blur(20px) saturate(1.3);
-  border: 1px solid var(--chrome-border, rgba(0,0,0,.1));
+  border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.3);
   overflow: hidden;
   z-index: 820;
@@ -126,34 +136,64 @@ function clear() {
 .qp-list {
   list-style: none;
   margin: 0;
-  padding: 8px;
-  /* 关键：在 max-height 容器内让列表自身可滚动，避免长合集（如 100 集）撑爆面板后被 overflow:hidden 裁掉 */
+  padding: 8px 8px 12px;
+  /* 关键：在 max-height 容器内让列表自身可滚动 */
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  /* 分集之间留出 gap，清晰分开、不再「堆积」 */
-  gap: 6px;
+  gap: 4px;
+  /* 上下渐隐遮罩，滚动时边缘柔和不生硬 */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+/* 自定义滚动条：细、半透明、hover 品牌色 */
+.qp-list::-webkit-scrollbar {
+  width: 6px;
+}
+.qp-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.qp-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+  border: none;
+}
+.qp-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--brand-rgb, 236, 109, 164), 0.6);
 }
 .qp-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* 加大内边距，分集之间留出可见空隙 */
-  padding: 10px 12px;
+  padding: 8px 10px;
   border-radius: 10px;
-  background: var(--chrome-hover, rgba(255,255,255,0.03));
-  /* 给每集一条很淡的下边界，进一步强化「每条分开」的视觉 */
-  border: 1px solid var(--chrome-border, rgba(255,255,255,0.05));
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 .qp-item:hover {
-  background: var(--chrome-hover, rgba(0,0,0,.05));
-  border-color: rgba(var(--brand-rgb, 236,109,164), 0.25);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(var(--brand-rgb, 236, 109, 164), 0.3);
 }
 .qp-item.active {
-  background: rgba(var(--brand-rgb, 236,109,164), 0.14);
-  border-color: rgba(var(--brand-rgb, 236,109,164), 0.4);
+  background: rgba(var(--brand-rgb, 236, 109, 164), 0.16);
+  border-color: rgba(var(--brand-rgb, 236, 109, 164), 0.45);
+}
+/* 激活项左侧品牌色细条，快速定位正在播放 */
+.qp-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--brand, #ec6da4);
 }
 .qp-order {
   width: 18px;
@@ -232,5 +272,48 @@ function clear() {
   color: var(--chrome-text-faint, #999);
   font-size: 12px;
   padding: 28px 12px;
+}
+
+/* ===== 浅色模式：面板改为浅色毛玻璃，文字/滚动条/项底全部反转 ===== */
+:global(.light) .qp-panel {
+  background: rgba(252, 252, 254, 0.86);
+  color: rgba(30, 30, 36, 0.88);
+  border-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.12);
+}
+:global(.light) .qp-head {
+  border-bottom-color: rgba(0, 0, 0, 0.08);
+}
+:global(.light) .qp-tool {
+  color: rgba(0, 0, 0, 0.5);
+}
+:global(.light) .qp-tool:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+:global(.light) .qp-list {
+  scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+:global(.light) .qp-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.18);
+}
+:global(.light) .qp-item {
+  background: rgba(0, 0, 0, 0.025);
+  border-color: rgba(0, 0, 0, 0.06);
+}
+:global(.light) .qp-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+:global(.light) .qp-name {
+  color: rgba(30, 30, 36, 0.88);
+}
+:global(.light) .qp-order,
+:global(.light) .qp-author {
+  color: rgba(0, 0, 0, 0.45);
+}
+:global(.light) .qp-remove {
+  color: rgba(0, 0, 0, 0.4);
+}
+:global(.light) .qp-empty {
+  color: rgba(0, 0, 0, 0.4);
 }
 </style>

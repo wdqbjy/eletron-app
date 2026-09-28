@@ -50,6 +50,8 @@
         <button class="control-btn" title="下一首" :disabled="!current" @click="playerApi.playNext()">
           <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
         </button>
+        <!-- 隐形占位：与左侧模式按钮等宽，使播放按钮精确居于行的正中（即播放器水平中心） -->
+        <span class="control-spacer" aria-hidden="true"></span>
       </div>
 
       <div class="progress-container">
@@ -188,6 +190,7 @@ const onCoverError = (e: Event): void => {
   z-index: 800;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
   padding: 0 20px;
   /* 顶部一线品牌色晕 + 与页面同源的磨砂底色：深浅模式 / 主题色整体联动 */
@@ -210,6 +213,8 @@ const onCoverError = (e: Event): void => {
   align-items: center;
   gap: 10px;
   width: 200px;
+  flex-shrink: 0;
+  min-width: 0;
 }
 .current-cover {
   width: 44px;
@@ -262,16 +267,29 @@ const onCoverError = (e: Event): void => {
   text-overflow: ellipsis;
 }
 .player-controls {
-  flex: 1;
+  /* 绝对定位居中：相对整个播放器宽度真正居中，不受左右两侧内容宽度影响 */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  width: 460px;
+  max-width: calc(100% - 440px);
 }
 .control-buttons {
   display: flex;
   align-items: center;
   gap: 14px;
+  justify-content: center;
+}
+/* 与 .control-btn 同宽的隐形占位，平衡左侧模式按钮，保证播放键居中 */
+.control-spacer {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
 }
 .control-btn {
   width: 34px;
@@ -383,9 +401,8 @@ const onCoverError = (e: Event): void => {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-  /* 与左侧 current-track 等宽，使中间控制区在窗口内真正居中 */
-  width: 200px;
   flex-shrink: 0;
+  width: auto;
 }
 .volume-control {
   display: flex;

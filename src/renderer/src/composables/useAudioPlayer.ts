@@ -61,9 +61,10 @@ function unbindAll() {
 }
 
 function currentPlayList(): RecommendedMusic[] {
-  // 多分P合集：在分P队列内切歌；单曲：用推荐列表作切歌源
+  // 多分P合集：在分P队列内切歌；歌单(队列>1)：在歌单内切歌；单曲：用推荐列表作切歌源
   const p = usePlayerStore()
   if (p.queueIsEpisodes) return p.queue
+  if (p.queue.length > 1) return p.queue
   const rec = useRecommendStore().items
   return rec.length ? rec : p.queue
 }
@@ -197,7 +198,8 @@ export function useAudioPlayer() {
         const nextIndex = getNextMusicIndex(list, player.playMode, player.current)
         const next = musicAt(list, nextIndex)
         if (next) {
-          playMusic(next)
+          // 队列>1 时保留队列，避免切歌把原队列(含正在播放的)覆盖成单曲
+          playMusic(next, player.queue.length > 1 ? { queue: player.queue } : undefined)
         } else {
           player.setIsPlaying(false)
           player.setCurrentTime(0)
@@ -215,7 +217,7 @@ export function useAudioPlayer() {
     existingListeners = listeners
   }
 
-  async function playMusic(music: RecommendedMusic) {
+  async function playMusic(music: RecommendedMusic, context?: { queue?: RecommendedMusic[] }): Promise<void> {
     clearLoadingTimer()
     try {
       if (!getAudio().paused) getAudio().pause()
@@ -247,7 +249,7 @@ export function useAudioPlayer() {
           `musicInfo.data?.pages?.length=${musicInfo?.data?.pages?.length ?? '(无)'} ` +
           `pages.length=${pages.length}`
       )
-      if (pages.length > 1) {
+      if (pages.length > 1 && !(context?.queue && context.queue.length)) {
         // 多分P(合集)：把所有分P展开成播放队列，切歌在分P内循环
         const eps = buildEpisodes(music, pages)
         player.setQueue(eps)
@@ -272,10 +274,19 @@ export function useAudioPlayer() {
         // current 携带正确的分P cid/标题/时长，切歌才能按 cid 精确定位
         player.setCurrent(target)
       } else {
-        // 单曲：队列只放当前曲目（单曲不铺底推荐列表到队列面板）
+        // 单曲或歌单模式
         player.setQueueIsEpisodes(false)
         player.setCurrentSeries(null)
-        player.setQueue([music])
+        if (context?.queue && context.queue.length) {
+          // 显式队列（歌单/队列面板点歌）：直接用该队列
+          player.setQueue(context.queue)
+        } else {
+          // 点新歌（首页/搜索卡片）：若已在队列则只切歌不动队列；否则追加到队尾，不清空原队列
+          const exists = player.queue.some(
+            (m) => m.bvid === music.bvid && (m.cid ?? null) === (music.cid ?? null)
+          )
+          if (!exists) player.setQueue([...player.queue, music])
+        }
       }
       if (cid) {
         const playUrl = await getMusicPlayUrl(music.bvid, cid)
@@ -343,13 +354,13 @@ export function useAudioPlayer() {
     const list = currentPlayList()
     const nextIndex = getNextMusicIndex(list, player.playMode, player.current)
     const next = musicAt(list, nextIndex)
-    if (next) playMusic(next)
+    if (next) playMusic(next, player.queue.length > 1 ? { queue: player.queue } : undefined)
   }
 
   function playPrevious() {
     const list = currentPlayList()
     const prev = musicAt(list, getPreviousMusicIndex(list, player.playMode, player.current))
-    if (prev) playMusic(prev)
+    if (prev) playMusic(prev, player.queue.length > 1 ? { queue: player.queue } : undefined)
   }
 
   function seekToTime(sec: number) {

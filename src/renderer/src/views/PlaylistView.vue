@@ -385,14 +385,16 @@ function backToPlaylists(): void {
   openPlaylistId.value = ''
 }
 
-/** 播放全部：从第一首开始播（多分P会在 playMusic 内自动展开队列） */
+/** 播放全部：把整个歌单载入队列，从第一首开始播 */
 function playAllInPlaylist(pl: Playlist): void {
   if (!pl.songs.length) return
-  playMusic(pl.songs[0])
+  playMusic(pl.songs[0], { queue: pl.songs })
 }
 
 function playPlaylistSong(song: RecommendedMusic): void {
-  playMusic(song)
+  // 在歌单详情里点单曲：以当前歌单为队列播放，便于上一首/下一首在歌单内切换
+  const pl = openPlaylist.value
+  playMusic(song, { queue: pl?.songs?.length ? pl.songs : undefined })
 }
 
 function removeSong(song: RecommendedMusic): void {
