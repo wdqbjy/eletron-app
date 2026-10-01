@@ -13,7 +13,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 12 # 与本地 pnpm 版本对齐（lockfile v9 + allowBuilds 需要新版解析）
 
       - name: Setup Node
         uses: actions/setup-node@v4
