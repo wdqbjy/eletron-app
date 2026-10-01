@@ -10,6 +10,7 @@
       >
         <img
           v-if="current?.cover"
+          :key="current.bvid + ':' + (current.cid ?? '')"
           :src="current.cover"
           :alt="current.title"
           class="cover-img"
@@ -110,6 +111,7 @@
         class="action-btn"
         :class="{ active: player.showQueuePanel }"
         title="播放队列"
+        data-queue-toggle
         @click="player.toggleQueuePanel()"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"

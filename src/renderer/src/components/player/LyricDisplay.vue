@@ -350,7 +350,7 @@ onUnmounted(() => {
 
         <!-- 工具栏：校正 + 搜索 -->
         <div class="lyric-actions">
-          <button class="action-btn" @click="adjustOffset(-OFFSET_STEP)" title="歌词提前 0.5s">
+          <button class="action-btn" @click="adjustOffset(-OFFSET_STEP)" title="歌词延后 0.5s（调过头了往回点这个）">
             <span class="ab-arrow">«</span>
             <span>0.5s</span>
           </button>
@@ -359,7 +359,7 @@ onUnmounted(() => {
               <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
             </svg>
           </button>
-          <button class="action-btn" @click="adjustOffset(OFFSET_STEP)" title="歌词延迟 0.5s">
+          <button class="action-btn" @click="adjustOffset(OFFSET_STEP)" title="歌词提前 0.5s（歌词比歌声慢就点这边）">
             <span>0.5s</span>
             <span class="ab-arrow">»</span>
           </button>
@@ -795,10 +795,15 @@ onUnmounted(() => {
   opacity: 0.35;
   pointer-events: auto;
 }
-/* large 模式下隐藏工具栏/偏移 badge，保持大图纯净 */
-.lyric-stage.large .lyric-actions,
-.lyric-stage.large .offset-badge,
-.lyric-stage.large .manual-hint {
+/* large 模式：校准入口已移至左侧播放操作下方，歌词区保持纯净 */
+.lyric-stage.large .manual-hint,
+.lyric-stage.large .lyric-actions {
   display: none;
+}
+.lyric-stage.large .offset-badge {
+  top: 4px;
+  right: 0;
+  bottom: auto;
+  z-index: 6;
 }
 </style>

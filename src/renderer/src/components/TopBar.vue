@@ -1,5 +1,5 @@
 <template>
-  <header ref="topbarRef" class="topbar">
+  <header ref="topbarRef" class="topbar" @dblclick="onTitleBarDblClick">
     <!-- 左侧：品牌 -->
     <div class="topbar-left">
       <span class="brand-dot" :class="{ dark: theme === 'dark' }"></span>
@@ -292,6 +292,13 @@ const handleMaximize = (): void => {
     setTimeout(checkMaximized, 100)
   }
 }
+// 双击标题栏空白处切换最大化/还原（Windows 标题栏惯例）；
+// 命中可交互元素（按钮/输入框/弹窗）时不触发，避免误切换
+const onTitleBarDblClick = (e: MouseEvent): void => {
+  const target = e.target as HTMLElement | null
+  if (target && target.closest('button, input, select, a, .login-modal, .window-controls')) return
+  handleMaximize()
+}
 const handleClose = (): void => winIpc.electronMyAPI && winIpc.electronMyAPI.close()
 
 let resizeTimer: ReturnType<typeof setTimeout> | null = null
@@ -443,13 +450,38 @@ onUnmounted(() => {
   transition: background 0.18s ease, color 0.18s ease;
 }
 
+/* 图标 hover 微放大 + 按压缩小，增强点击反馈 */
+.control-btn svg {
+  transition: transform 0.16s ease;
+}
+
 .control-btn:hover {
   background: var(--chrome-hover);
   color: var(--chrome-text);
 }
 
+.control-btn:hover svg {
+  transform: scale(1.08);
+}
+
+.control-btn:active svg {
+  transform: scale(0.82);
+}
+
+/* 键盘导航焦点环 */
+.control-btn:focus-visible {
+  outline: 2px solid var(--brand, #ec6da4);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
+
 .control-btn.close:hover {
   background: #e81123;
+  color: #ffffff;
+}
+
+.control-btn.close:active {
+  background: #c50f1f;
   color: #ffffff;
 }
 

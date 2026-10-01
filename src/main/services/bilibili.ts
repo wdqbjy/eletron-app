@@ -41,13 +41,16 @@ function extractWbiKeys(wbiImg: { img_url?: string; sub_url?: string }) {
   const extract = (u?: string) => (u ? u.slice(u.lastIndexOf('/') + 1, u.lastIndexOf('.')) : '')
   return { imgKey: extract(wbiImg.img_url), subKey: extract(wbiImg.sub_url) }
 }
-const wbiKeysCache = { imgKey: '', subKey: '' }
+const wbiKeysCache = { imgKey: '', subKey: '', fetchedAt: 0 }
+/** wbi key 有效期：B 站约每天轮换，取 6 小时保守值，过期后自动从 nav 刷新 */
+const WBI_KEY_TTL_MS = 6 * 60 * 60 * 1000
 function updateWbiKeys(wbiImg: { img_url?: string; sub_url?: string }): void {
   if (!wbiImg) return
   const { imgKey, subKey } = extractWbiKeys(wbiImg)
   if (imgKey && subKey) {
     wbiKeysCache.imgKey = imgKey
     wbiKeysCache.subKey = subKey
+    wbiKeysCache.fetchedAt = Date.now()
   }
 }
 
@@ -101,6 +104,16 @@ class BilibiliApi {
     this.axios.interceptors.request.use(async (config) => {
       await this.ensureBuvid()
       config.headers = config.headers || {}
+      // 仅对 B 站域名注入 buvid/登录态 Cookie：下载 CDN、网易云歌词等第三方请求
+      // 一律不带 SESSDATA，防止凭据外泄
+      let isBiliHost = true
+      try {
+        const u = new URL(config.url || '/', 'https://www.bilibili.com')
+        if (/^https?:/i.test(u.protocol)) {
+          isBiliHost = /(^|\.)bilibili\.com$/i.test(u.hostname)
+        }
+      } catch (_) {}
+      if (!isBiliHost) return config
       // 合并：先放 buvid（兜底），再用登录态覆盖同名 key
       const merged = new Map<string, string>()
       if (this.cookieHeader) {
@@ -112,13 +125,16 @@ class BilibiliApi {
       for (const [k, v] of Object.entries(this.cookies)) merged.set(k, v)
       const cookieStr = [...merged.entries()].map(([k, v]) => `${k}=${v}`).join('; ')
       if (cookieStr) config.headers.Cookie = cookieStr
-      // 收藏夹 /x/v3/fav/* 接口需要 wbi 签名（img/sub key 从 nav 接口缓存）
-      if (config.url && config.url.includes('/x/v3/fav/') && wbiKeysCache.imgKey) {
-        config.params = wbiSignParams(
-          (config.params as Record<string, unknown>) || {},
-          wbiKeysCache.imgKey,
-          wbiKeysCache.subKey
-        )
+      // 收藏夹 /x/v3/fav/* 接口需要 wbi 签名；key 缺失或过期时自动从 nav 刷新
+      if (config.url && config.url.includes('/x/v3/fav/')) {
+        await this.ensureWbiKeys()
+        if (wbiKeysCache.imgKey) {
+          config.params = wbiSignParams(
+            (config.params as Record<string, unknown>) || {},
+            wbiKeysCache.imgKey,
+            wbiKeysCache.subKey
+          )
+        }
       }
       // 请求在【主进程 / Node 侧】发出，所以不显示在渲染层 DevTools 网络面板，
       // 只会打印在这里的终端。这段日志让你能确认请求确实打到了 B 站。
@@ -382,7 +398,24 @@ class BilibiliApi {
     }
   }
 
-  /** 当前登录用户信息：GET /x/web-interface/nav（含 uname/mid/isLogin） */
+  /** wbi key 缺失或超过 TTL 时，从 nav 接口拉取刷新（失败不阻断，仅退化为未签名请求） */
+  private async ensureWbiKeys(): Promise<void> {
+    if (
+      wbiKeysCache.imgKey &&
+      Date.now() - wbiKeysCache.fetchedAt < WBI_KEY_TTL_MS
+    ) {
+      return
+    }
+    try {
+      const resp = await this.axios.get(`${BILIBILI_BASE}/x/web-interface/nav`)
+      if ((resp.data as any)?.data?.wbi_img) {
+        updateWbiKeys((resp.data as any).data.wbi_img)
+      }
+    } catch (err: any) {
+      console.warn('[Bilibili] refresh wbi keys failed:', err?.message)
+    }
+  }
+
   async getUserInfo(): Promise<any> {
     try {
       await this.refreshCookiesFromSession()
@@ -559,22 +592,30 @@ class BilibiliApi {
   /**
    * 下载音频流为 Buffer。
    * 复用本实例 axios：自动带 UA / Referer / 登录态 cookie（HQ/无损流需要 SESSDATA）。
-   * @param onProgress 字节进度回调 (已下载字节, 总字节)，依赖 axios onDownloadProgress
+   * @param onProgress 字节进度回调 (已下载字节, 总字节)；Node 侧无 onDownloadProgress，
+   *                   改用 responseType:'stream' 逐块计数，进度平滑更新。
    */
   async fetchAudioBuffer(
     url: string,
     onProgress?: (loaded: number, total: number) => void
   ): Promise<Buffer> {
     const resp = await this.axios.get(url, {
-      responseType: 'arraybuffer',
-      timeout: 120000,
-      onDownloadProgress: (progressEvent: any) => {
-        if (onProgress && progressEvent.total) {
-          onProgress(progressEvent.loaded, progressEvent.total)
-        }
-      }
+      responseType: 'stream',
+      timeout: 120000
     })
-    return Buffer.from(resp.data)
+    return await new Promise<Buffer>((resolve, reject) => {
+      const chunks: Buffer[] = []
+      let loaded = 0
+      const total = Number(resp.headers?.['content-length'] || 0)
+      const stream = resp.data as NodeJS.ReadableStream
+      stream.on('data', (chunk: Buffer) => {
+        chunks.push(chunk)
+        loaded += chunk.length
+        if (onProgress) onProgress(loaded, total || loaded)
+      })
+      stream.on('end', () => resolve(Buffer.concat(chunks)))
+      stream.on('error', (err: Error) => reject(err))
+    })
   }
 
   // ============== 歌词（网易云来源） ==============

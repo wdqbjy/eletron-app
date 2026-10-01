@@ -344,6 +344,12 @@
               <span class="version" v-if="appInfo.version">v{{ appInfo.version }}</span>
             </div>
             <p class="about-desc">一款优雅的 B 站音乐播放器，让你发现并享受喜欢的音乐。</p>
+            <div class="about-update">
+              <button class="update-check-btn" :disabled="updateChecking" @click="checkForUpdate">
+                {{ updateChecking ? '检查中…' : '检查更新' }}
+              </button>
+              <span v-if="updateStatus" class="update-status">{{ updateStatus }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -669,6 +675,34 @@ async function loadAppInfo(): Promise<void> {
     if (res?.code === 0 && res?.data) appInfo.value = res.data
   } catch (e) {
     console.error('[MineView] 获取应用信息失败:', e)
+  }
+}
+
+// ============ 关于：检查更新 ============
+const updateChecking = ref(false)
+const updateStatus = ref('')
+
+async function checkForUpdate(): Promise<void> {
+  if (updateChecking.value) return
+  updateChecking.value = true
+  updateStatus.value = ''
+  try {
+    const api = (window as any).electronMyAPI
+    if (!api?.checkForUpdates) {
+      updateStatus.value = '当前环境不支持检查更新'
+      return
+    }
+    const res = await api.checkForUpdates()
+    if (res?.success) {
+      // 主进程 autoDownload=true：发现新版本会自动下载，装好等用户确认
+      updateStatus.value = '已是最新，或有新版本时将自动下载并在安装前提示你'
+    } else {
+      updateStatus.value = res?.message || '检查更新失败'
+    }
+  } catch (e: any) {
+    updateStatus.value = e?.message || '检查更新失败'
+  } finally {
+    updateChecking.value = false
   }
 }
 
@@ -1466,6 +1500,36 @@ if (activeTab.value === 'settings') {
   color: rgba(255, 255, 255, 0.45);
 }
 
+/* 检查更新 */
+.about-update {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.update-check-btn {
+  border: 1px solid rgba(var(--brand-rgb, 236, 109, 164), 0.4);
+  background: rgba(var(--brand-rgb, 236, 109, 164), 0.1);
+  color: var(--brand, #ec6da4);
+  font-size: 12px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.update-check-btn:hover:not(:disabled) {
+  background: var(--brand, #ec6da4);
+  color: #fff;
+}
+.update-check-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.update-status {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
 /* 浅色模式补充 */
 .light .about-header .version {
   color: rgba(40, 40, 46, 0.5);
@@ -1474,5 +1538,9 @@ if (activeTab.value === 'settings') {
 
 .light .about-desc {
   color: rgba(40, 40, 46, 0.55);
+}
+
+.light .update-status {
+  color: rgba(40, 40, 46, 0.5);
 }
 </style>

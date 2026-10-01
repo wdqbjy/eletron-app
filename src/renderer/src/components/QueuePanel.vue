@@ -28,7 +28,7 @@
         <button
           class="qp-remove"
           :title="m.bvid === player.current?.bvid ? '从队列移除' : '移除'"
-          @click="remove(m.bvid)"
+          @click="remove(m)"
         >
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
             stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
@@ -40,11 +40,24 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted, onBeforeUnmount } from 'vue'
 import { usePlayerStore } from '../stores/player'
 import { useAudioPlayer } from '../composables/useAudioPlayer'
+import type { RecommendedMusic } from '../apis/bilibili'
 
 const player = usePlayerStore()
 const playerApi = useAudioPlayer()
+
+// ===== 点击外部关闭：面板与触发按钮之外任意 pointerdown 均关闭（capture 确保不被 stopPropagation 拦截） =====
+function onDocPointerDown(e: PointerEvent) {
+  const t = e.target as HTMLElement | null
+  if (!t) return
+  if (t.closest('.qp-panel')) return
+  if (t.closest('[data-queue-toggle]')) return
+  player.showQueuePanel = false
+}
+onMounted(() => document.addEventListener('pointerdown', onDocPointerDown, true))
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown, true))
 
 /** 当前曲目匹配：分P合集同 bvid 多 cid，须按 cid 精确区分 */
 function isActive(m: { bvid: string; cid?: number }): boolean {
@@ -57,15 +70,18 @@ function isActive(m: { bvid: string; cid?: number }): boolean {
 
 function play(index: number) {
   const m = player.queue[index]
-  // 传入当前队列，避免 playMusic 把队列覆盖成单曲、清掉其它歌曲
-  if (m) playerApi.playMusic(m, { queue: player.queue })
+  // 无 bvid 的项（历史脏数据）不可播，忽略；传入当前队列避免覆盖清空
+  if (m?.bvid) playerApi.playMusic(m, { queue: player.queue })
 }
-function remove(bvid: string) {
-  // 删除前记录是否为正在播放的曲目及其位置
-  const wasPlaying = player.current?.bvid === bvid
-  const idx = player.queue.findIndex((m) => m.bvid === bvid)
-  player.removeFromQueue(bvid)
-  // 正在播放的曲目被删：自动切到队列中相邻的下一首（队尾则退到新的末尾）
+function remove(m: RecommendedMusic) {
+  // 多P队列按 bvid+cid 精确移除单分P，不再误删整个合集
+  const wasPlaying =
+    player.current?.bvid === m.bvid && (player.current?.cid ?? null) === (m.cid ?? null)
+  const idx = player.queue.findIndex(
+    (q) => q.bvid === m.bvid && (q.cid ?? null) === (m.cid ?? null)
+  )
+  player.removeFromQueue(m.bvid, m.cid)
+  // 删除的正是正在播放的分P：自动切到相邻下一首（队尾则退到新的末尾）
   if (wasPlaying && player.queue.length > 0) {
     const nextIdx = Math.min(idx >= 0 ? idx : 0, player.queue.length - 1)
     const next = player.queue[nextIdx]

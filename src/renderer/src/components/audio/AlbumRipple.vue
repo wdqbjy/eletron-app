@@ -125,7 +125,9 @@ function drawFrame() {
 
   for (let i = 0; i < rings.length; i++) {
     const ring = rings[i]
-    const age = tNow - ring.startTime
+    // 钳制负 age：spawnRing 在本帧内生成（startTime 晚于帧头 tNow 快照）时
+    // age 为微小负值，会导致 arc() 半径为负抛 IndexSizeError
+    const age = Math.max(0, tNow - ring.startTime)
     if (age >= RING_LIFE) continue
 
     const lifeT = age / RING_LIFE
@@ -142,7 +144,7 @@ function drawFrame() {
     ctx.globalAlpha = alpha
 
     ctx.beginPath()
-    ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+    if (radius > 0) ctx.arc(cx, cy, radius, 0, Math.PI * 2)
     ctx.stroke()
   }
 

@@ -165,8 +165,11 @@ export const usePlayerStore = defineStore('player', {
     toggleQueuePanel() {
       this.showQueuePanel = !this.showQueuePanel
     },
-    removeFromQueue(bvid: string) {
-      this.queue = this.queue.filter((m) => m.bvid !== bvid)
+    /** 从队列移除：默认按 bvid 整稿移除；传 cid 时按 bvid+cid 精确移除单个分P */
+    removeFromQueue(bvid: string, cid?: number) {
+      this.queue = this.queue.filter((m) =>
+        cid != null ? !(m.bvid === bvid && (m.cid ?? null) === cid) : m.bvid !== bvid
+      )
     },
     clearQueue() {
       this.queue = []

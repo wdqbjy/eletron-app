@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { usePlayerStore } from '../stores/player'
 import { useSettingsStore } from '../stores/settings'
+import { useLyricStore } from '../stores/lyric'
 import { useAudioPlayer } from '../composables/useAudioPlayer'
 import { formatDuration, fixCoverUrl } from '../utils/bilibili'
 import { COVER_FALLBACK } from '../utils/coverFallback'
@@ -17,6 +18,7 @@ import AlbumRipple from './audio/AlbumRipple.vue'
  */
 const player = usePlayerStore()
 const settings = useSettingsStore()
+const lyricStore = useLyricStore()
 const { togglePlayPause, playPrevious, playNext, seekToTime } = useAudioPlayer()
 
 // 窗口控制
@@ -77,7 +79,9 @@ function seekTo(timeSec: number) {
 }
 
 function onProgressInput(e: Event) {
-  player.setCurrentTime(Number((e.target as HTMLInputElement).value))
+  // 点击轨道/拖动中即时 seek：Electron(Chromium) 点击轨道只触发 input、
+  // 不触发 change，seek 只绑 change 会导致点击进度条永远不生效
+  seekTo(Number((e.target as HTMLInputElement).value))
 }
 function onProgressChange(e: Event) {
   seekTo(Number((e.target as HTMLInputElement).value))
@@ -210,6 +214,20 @@ function cover(url: string): string {
                     <span class="big-control-spacer" aria-hidden="true"></span>
                   </div>
                 </div>
+
+                <!-- 歌词校准（±0.5s，按曲目记忆）：放在播放操作下方 -->
+                <div class="lyric-cal-row">
+                  <button class="cal-btn" title="歌词延后 0.5s" @click="lyricStore.adjustLyricOffset(-500)">« 0.5s</button>
+                  <button
+                    class="cal-badge"
+                    :class="{ adjusted: lyricStore.currentOffset !== 0 }"
+                    title="歌词偏移量，点击归零"
+                    @click="lyricStore.resetLyricOffset()"
+                  >
+                    {{ lyricStore.currentOffset > 0 ? '+' : '' }}{{ (lyricStore.currentOffset / 1000).toFixed(1) }}s
+                  </button>
+                  <button class="cal-btn" title="歌词提前 0.5s（歌词比歌声慢就点这边）" @click="lyricStore.adjustLyricOffset(500)">0.5s »</button>
+                </div>
               </div>
             </div>
 
@@ -305,8 +323,27 @@ function cover(url: string): string {
   background: var(--chrome-hover);
   color: var(--chrome-text);
 }
+/* 与 TopBar 一致的按压/微缩放反馈 */
+.wc-btn svg {
+  transition: transform 0.16s ease;
+}
+.wc-btn:hover svg {
+  transform: scale(1.08);
+}
+.wc-btn:active svg {
+  transform: scale(0.82);
+}
+.wc-btn:focus-visible {
+  outline: 2px solid var(--brand, #ec6da4);
+  outline-offset: -2px;
+  border-radius: 6px;
+}
 .wc-btn.wc-close:hover {
   background: #e81123;
+  color: #ffffff;
+}
+.wc-btn.wc-close:active {
+  background: #c50f1f;
   color: #ffffff;
 }
 
@@ -330,6 +367,8 @@ function cover(url: string): string {
   width: 100%;
   max-width: 1000px;
   padding: 0 40px;
+  /* 整体上移一点 */
+  transform: translateY(-12px);
 }
 
 /* ===== 左栏 ===== */
@@ -378,7 +417,12 @@ function cover(url: string): string {
   margin: 4px 0 0;
 }
 
-.big-progress { width: 100%; max-width: 380px; }
+.big-progress {
+  width: 100%;
+  max-width: 380px;
+  /* 进度条上移，封面/波纹保持原位 */
+  transform: translateY(-14px);
+}
 .progress-container {
   display: flex;
   align-items: center;
@@ -395,8 +439,13 @@ function cover(url: string): string {
 .progress-bar-wrapper { flex: 1; position: relative; height: 4px; }
 .progress-slider {
   position: absolute;
+  left: 0;
+  top: 50%;
   width: 100%;
-  height: 100%;
+  /* 隐形命中区扩到 16px（视觉条仍 4px）：点击/拖动不再难点中 */
+  height: 16px;
+  transform: translateY(-50%);
+  margin: 0;
   opacity: 0;
   cursor: pointer;
   z-index: 2;
@@ -417,7 +466,54 @@ function cover(url: string): string {
 }
 .progress-bar-wrapper.seeking .progress-fill { transition: none; }
 
-.big-control-buttons { width: 100%; }
+.big-control-buttons {
+  width: 100%;
+  /* 播放操作（含校准行）上移，封面/波纹保持原位 */
+  transform: translateY(-14px);
+}
+
+/* 歌词校准行（±0.5s）：播放操作下方，低调半透明 */
+.lyric-cal-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 16px;
+}
+.cal-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.cal-btn:hover {
+  color: #fff;
+  background: var(--brand, #ec6da4);
+  border-color: transparent;
+}
+.cal-badge {
+  min-width: 52px;
+  padding: 5px 10px;
+  font-size: 12px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.45);
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.cal-badge:hover { color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+.cal-badge.adjusted {
+  color: #fff;
+  background: var(--brand-grad, linear-gradient(135deg, #f78bb8, #ec6da4));
+  border-color: transparent;
+}
+
 .big-control-row {
   display: flex;
   align-items: center;
@@ -465,6 +561,8 @@ function cover(url: string): string {
   height: 100%;
   display: flex;
   align-items: center;
+  /* 歌词列上移，底部不再贴边 */
+  transform: translateY(-16px);
 }
 
 /* 浅色模式：文字颜色适配 */

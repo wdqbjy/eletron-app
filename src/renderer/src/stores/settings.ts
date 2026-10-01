@@ -83,8 +83,10 @@ export const useSettingsStore = defineStore('settings', {
       const s = defaults()
 
       // 1) 新版 JSON
+      let hasNewData = false
       try {
         const raw = localStorage.getItem(SETTINGS_KEY)
+        hasNewData = !!raw
         if (raw) {
           const j = JSON.parse(raw)
           if (typeof j.visualizerEnabled === 'boolean') s.visualizerEnabled = j.visualizerEnabled
@@ -100,11 +102,15 @@ export const useSettingsStore = defineStore('settings', {
         console.warn('[Settings] 读取设置失败，使用默认值:', e)
       }
 
-      // 2) 旧版独立 key 迁移（仅新版未写过时）
+      // 2) 旧版独立 key 迁移（仅新版 JSON 从未写过时才采用，迁移后删除旧 key 防止重启回灌）
       const legacyEn = localStorage.getItem(LEGACY_ENABLED_KEY)
-      if (legacyEn !== null) s.visualizerEnabled = legacyEn === '1'
+      if (!hasNewData && legacyEn !== null) s.visualizerEnabled = legacyEn === '1'
       const legacyInten = parseFloat(localStorage.getItem(LEGACY_INTENSITY_KEY) || '')
-      if (!isNaN(legacyInten)) s.audioVisualizerIntensity = clamp01(legacyInten)
+      if (!hasNewData && !isNaN(legacyInten)) s.audioVisualizerIntensity = clamp01(legacyInten)
+      if (legacyEn !== null) localStorage.removeItem(LEGACY_ENABLED_KEY)
+      if (localStorage.getItem(LEGACY_INTENSITY_KEY) !== null) {
+        localStorage.removeItem(LEGACY_INTENSITY_KEY)
+      }
 
       this.$patch(s)
       this.persist()

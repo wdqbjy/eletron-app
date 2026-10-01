@@ -13,7 +13,7 @@ export const useLyricStore = defineStore('lyric', () => {
   const currentLineIndex = ref(-1)
   const isLyricLoading = ref(false)
   const lyricError = ref('')
-  // 用户手动偏移（毫秒，"校正"功能）
+  // 用户手动偏移（毫秒，"校正"功能）——按曲目持久化（对齐 pink-music lyricOffsets）
   const currentOffset = ref(0)
   // 歌词来源：netease 自动 / manual 手动指定
   const lyricSource = ref('netease')
@@ -21,6 +21,24 @@ export const useLyricStore = defineStore('lyric', () => {
   const lyricCache = new Map<string, LyricLine[]>()
   // 当前曲目的缓存 key（bvid/cid/标题/作者）
   const currentKey = ref('')
+
+  // ===== per-track 偏移持久化（localStorage） =====
+  const OFFSETS_KEY = 'app-lyric-offsets'
+  function loadOffsets(): Record<string, number> {
+    try {
+      const raw = localStorage.getItem(OFFSETS_KEY)
+      const parsed = raw ? JSON.parse(raw) : {}
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+  const lyricOffsets: Record<string, number> = loadOffsets()
+  function persistOffsets() {
+    try {
+      localStorage.setItem(OFFSETS_KEY, JSON.stringify(lyricOffsets))
+    } catch (_) {}
+  }
 
   /** 有无歌词可显示 */
   const hasLyric = computed(() => currentLyric.value.length > 0)
@@ -35,6 +53,8 @@ export const useLyricStore = defineStore('lyric', () => {
     if (lyricCache.has(key)) {
       currentLyric.value = lyricCache.get(key)!
       lyricError.value = ''
+      // 恢复该歌已保存的校正偏移
+      currentOffset.value = lyricOffsets[key] || 0
       updateCurrentLine(0)
       return
     }
@@ -70,7 +90,8 @@ export const useLyricStore = defineStore('lyric', () => {
       lyricCache.set(key, parsed.lyrics)
     }
     lyricSource.value = source
-    currentOffset.value = 0
+    // 恢复该歌已保存的校正偏移（0 仅在从未校正过时）
+    currentOffset.value = (key && lyricOffsets[key]) || 0
     lyricError.value = ''
     updateCurrentLine(0)
   }
@@ -79,12 +100,20 @@ export const useLyricStore = defineStore('lyric', () => {
     currentLineIndex.value = Math.max(0, i)
   }
 
-  /** 手动微调偏移（±500ms） */
+  /** 手动微调偏移（±500ms）——按曲目记忆并持久化 */
   function adjustLyricOffset(deltaMs: number) {
-    currentOffset.value += deltaMs
+    if (!currentKey.value) return
+    const next = (lyricOffsets[currentKey.value] || 0) + deltaMs
+    lyricOffsets[currentKey.value] = next
+    currentOffset.value = next
+    persistOffsets()
     updateCurrentLine()
   }
   function resetLyricOffset() {
+    if (currentKey.value) {
+      lyricOffsets[currentKey.value] = 0
+      persistOffsets()
+    }
     currentOffset.value = 0
     updateCurrentLine()
   }

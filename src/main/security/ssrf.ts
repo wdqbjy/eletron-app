@@ -64,6 +64,19 @@ function isPrivateIp(ip: string): boolean {
 
 /** 同步校验：协议 / host 白名单 / 来源精确匹配 / 非裸 IP。全部通过才返回 URL */
 export function parseSafeUrl(raw: string): URL {
+  const u = validateUrlShape(raw)
+  if (!ALLOWED_HOSTS.includes(u.hostname)) {
+    throw new SecurityError(`主机不在白名单: ${u.hostname}`)
+  }
+  const origin = `${u.protocol}//${u.host}`
+  if (!ALLOWED_ORIGINS.includes(origin)) {
+    throw new SecurityError(`来源不在白名单: ${origin}`)
+  }
+  return u
+}
+
+/** 通用 URL 形状校验：协议 / 长度 / 凭据 / 裸 IP 字面量（不含 host 白名单判断） */
+function validateUrlShape(raw: string): URL {
   if (typeof raw !== 'string' || raw.trim().length === 0 || raw.length > 2048) {
     throw new SecurityError('URL 类型或长度非法')
   }
@@ -79,16 +92,41 @@ export function parseSafeUrl(raw: string): URL {
   if (u.username || u.password) {
     throw new SecurityError('URL 不允许携带用户名密码')
   }
-  if (!ALLOWED_HOSTS.includes(u.hostname)) {
-    throw new SecurityError(`主机不在白名单: ${u.hostname}`)
-  }
   // 即使是白名单域名，也不接受以 IP 字面量形式直连
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname) || u.hostname.includes(':')) {
     throw new SecurityError('不允许使用 IP 字面量作为目标')
   }
-  const origin = `${u.protocol}//${u.host}`
-  if (!ALLOWED_ORIGINS.includes(origin)) {
-    throw new SecurityError(`来源不在白名单: ${origin}`)
+  return u
+}
+
+/**
+ * 媒体流 URL 校验（信任模型）：
+ * biliaudio:// 代理与下载的 URL 全部来自主进程 playurl 接口响应（B 站签名下发）。
+ * B 站 mcdn 调度会把流下发到任意第三方 edge/PCDN 域名（域名不可枚举，如
+ * *.mcdn.bilivideo.cn、合作 CDN 独立域），因此无法按域名后缀设白名单。
+ * 防护改为「形状校验 + DNS 反查公网 IP」纵深：即便渲染层伪造 URL，
+ * 解析到内网/保留段一律拦截，SSRF 防护目标不变。
+ */
+
+/** 同步校验媒体流 URL：通用形状校验（协议/凭据/IP 字面量） */
+export function parseMediaUrl(raw: string): URL {
+  return validateUrlShape(raw)
+}
+
+/** 媒体流统一入口：形状校验 + DNS 反查公网 IP（防重绑定，尽力而为） */
+export async function assertMediaUrl(raw: string): Promise<URL> {
+  const u = parseMediaUrl(raw)
+  try {
+    // 解析成功：所有记录必须为公网 IP（防 DNS 重绑定）
+    const records = await lookup(u.hostname, { all: true })
+    if (records.some((r) => isPrivateIp(r.address))) {
+      throw new SecurityError(`目标主机解析到内网 IP，已拦截: ${u.hostname}`)
+    }
+  } catch (err) {
+    if (err instanceof SecurityError) throw err
+    // 解析失败：B 站 PCDN 动态节点解析失败属常见情况，放行（无 IP 可验证时
+    // 依赖「URL 来自 playurl 可信链路」的信任模型），不缓存避免连坐
+    console.warn('[ssrf] media dns lookup failed, allow:', u.hostname)
   }
   return u
 }

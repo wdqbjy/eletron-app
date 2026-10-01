@@ -26,14 +26,38 @@ function sortAudio(audioList: any[]): any[] {
   })
 }
 
+/** B 站官方 CDN 域名族：择优时优先，避免命中不稳定的第三方 PCDN 节点 */
+const OFFICIAL_HOST_SUFFIXES: readonly string[] = [
+  'bilivideo.com',
+  'bilivideo.cn',
+  'szbdyd.com',
+  'bilibili.com',
+  'hdslb.com',
+  'akamaized.net'
+]
+
+function isOfficialUrl(url: string): boolean {
+  try {
+    const h = new URL(url).hostname
+    return OFFICIAL_HOST_SUFFIXES.some((s) => h === s || h.endsWith('.' + s))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * baseUrl/backupUrl 里挑一路：优先 B 站官方域名（稳定），
+ * 全部为第三方 PCDN（mcdn 调度下发）时才用第一个。
+ */
 function pickBaseUrl(info: any): string {
-  return (
-    info.baseUrl ||
-    info.base_url ||
-    info.backupUrl?.[0] ||
-    info.backup_url?.[0] ||
-    ''
-  )
+  const candidates = [
+    info.baseUrl,
+    info.base_url,
+    ...(Array.isArray(info.backupUrl) ? info.backupUrl : []),
+    ...(Array.isArray(info.backup_url) ? info.backup_url : [])
+  ].filter((u: unknown): u is string => typeof u === 'string' && !!u)
+  if (!candidates.length) return ''
+  return candidates.find(isOfficialUrl) || candidates[0]
 }
 
 function toAudioInfo(track: any, fallbackCodecs: string): { url: string; codecs: string } | null {

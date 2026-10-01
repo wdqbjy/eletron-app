@@ -1,5 +1,9 @@
 <template>
   <div class="page playlist-page">
+    <!-- 全局轻提示（登录提醒等，自动消失） -->
+    <Transition name="pl-toast">
+      <div v-if="plToast" class="pl-toast">{{ plToast }}</div>
+    </Transition>
     <!-- 我的歌单：歌单网格 / 歌单详情（点卡片进入） -->
     <template v-if="!openPlaylist">
       <!-- 页头（对齐 pink-music 歌单页） -->
@@ -336,7 +340,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue'
+import { ref, computed, nextTick, watch, onUnmounted } from 'vue'
 import { usePlaylistStore, type Playlist } from '../stores/playlist'
 import { usePlayerStore } from '../stores/player'
 import { useUserStore } from '../stores/user'
@@ -399,7 +403,7 @@ function playPlaylistSong(song: RecommendedMusic): void {
 
 function removeSong(song: RecommendedMusic): void {
   if (!openPlaylist.value) return
-  playlistStore.removeFromPlaylist(song.bvid, openPlaylist.value.id)
+  playlistStore.removeFromPlaylist(song.bvid, openPlaylist.value.id, song.cid)
 }
 
 /** 秒 → mm:ss */
@@ -419,11 +423,21 @@ const favProgress = ref<{ stage: string; current: number; total: number; loaded:
 const favError = ref('')
 const favResult = ref('')
 
+/** 轻提示（顶部悬浮药丸，2.5s 自动消失） */
+const plToast = ref('')
+let plToastTimer: ReturnType<typeof setTimeout> | null = null
+function showPlToast(msg: string): void {
+  plToast.value = msg
+  if (plToastTimer) clearTimeout(plToastTimer)
+  plToastTimer = setTimeout(() => (plToast.value = ''), 2500)
+}
+
 /** 同步收藏夹列表 → 本地虚拟歌单（bili-fav-*），结果反馈对齐 pink-music */
 async function syncFavlist(): Promise<void> {
   if (favSyncing.value) return
   if (!userStore.isLoggedIn || !userStore.userInfo?.mid) {
-    favError.value = '请先在顶栏登录 B 站账号'
+    // 未登录：轻提示引导去顶栏登录，不打断页面
+    showPlToast('请先在顶栏登录 B 站账号')
     return
   }
   favError.value = ''
@@ -558,6 +572,12 @@ watch(openPlaylistId, () => {
   selectedSongKeys.value = new Set()
   renameModalOpen.value = false
   showDeletePlaylistConfirm.value = false
+  favError.value = ''
+  favResult.value = ''
+})
+// 组件卸载时清理轻提示定时器
+onUnmounted(() => {
+  if (plToastTimer) clearTimeout(plToastTimer)
 })
 
 function songKey(song: RecommendedMusic): string {
@@ -1218,5 +1238,33 @@ function confirmDeleteCurrentPlaylist(): void {
 .light .rename-input {
   background: #fff;
   color: #222;
+}
+
+/* ============ 轻提示（顶部悬浮药丸） ============ */
+.pl-toast {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3000;
+  padding: 9px 20px;
+  border-radius: 999px;
+  background: var(--brand-grad, linear-gradient(135deg, #f78bb8, #e85d9c));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  box-shadow: 0 8px 24px rgba(var(--brand-rgb, 236, 109, 164), 0.4);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.pl-toast-enter-active,
+.pl-toast-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.pl-toast-enter-from,
+.pl-toast-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-8px);
 }
 </style>

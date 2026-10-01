@@ -16,6 +16,26 @@ const electronMyAPI = {
   maximize: () => ipcRenderer.send('window-maximize'), //主窗口放大或者复原
   close: () => ipcRenderer.send('window-close'), // 关闭主窗口
   isMaximized: () => ipcRenderer.invoke('window-is-maximized'), // 获取窗口最大化状态
+  // 自动更新（主进程 updater:check / updater:quitAndInstall + updater:* 事件推送）
+  checkForUpdates: (): Promise<{ success: boolean; message?: string }> =>
+    ipcRenderer.invoke('updater:check'),
+  quitAndInstallUpdate: () => ipcRenderer.invoke('updater:quitAndInstall'),
+  onUpdaterEvent: (callback: (channel: string, data: unknown) => void): (() => void) => {
+    const channels = [
+      'updater:checking',
+      'updater:update-available',
+      'updater:update-not-available',
+      'updater:download-progress',
+      'updater:update-downloaded',
+      'updater:error'
+    ]
+    const handlers = channels.map((ch) => {
+      const h = (_e: unknown, data: unknown) => callback(ch, data)
+      ipcRenderer.on(ch, h as never)
+      return { ch, h }
+    })
+    return () => handlers.forEach(({ ch, h }) => ipcRenderer.removeListener(ch, h as never))
+  },
   // HTTP 请求
   http: {
     get: <T = any>(url: string, params?: any): Promise<ApiResponse<T>> => {

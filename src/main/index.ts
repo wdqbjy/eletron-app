@@ -7,7 +7,7 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, AxiosError } f
 import icon from '../../resources/icon.png?asset'
 import { bilibiliApi } from './services/bilibili'
 import { downloadService } from './services/download'
-import { assertSafeUrl, SecurityError } from './security/ssrf'
+import { assertSafeUrl, assertMediaUrl, SecurityError } from './security/ssrf'
 import { nonEmptyString, boundedInt, plainObject, ParamError } from './security/validate'
 
 // ============== B 站音频流代理协议（必须在 app ready 之前注册）==============
@@ -42,6 +42,15 @@ function installBiliAudioProtocol(): void {
         const params = new URL(request.url).searchParams
         const audioUrl = params.get('u') || ''
         if (!/^https?:\/\//.test(audioUrl)) return new Response('bad url', { status: 400 })
+        // SSRF 防护：渲染层传入的音频地址不可信；用媒体 CDN 白名单
+        // （bilibili/bilivideo/hdslb/akamaized 后缀 + 内网 IP 拦截 + DNS 反查），
+        // 严格 origin 白名单会把 B 站音频 CDN 全部拦掉导致无法播放
+        try {
+          await assertMediaUrl(audioUrl)
+        } catch (err) {
+          console.warn('[biliaudio] blocked unsafe url:', err)
+          return new Response('bad url', { status: 403 })
+        }
         const headers: Record<string, string> = {
           'User-Agent': BILIBILI_UA,
           Referer: 'https://www.bilibili.com/',
@@ -439,7 +448,12 @@ class ElectronMyApp {
     this.setupIpcHandlers()
   }
 
+  /** IPC handler 只能注册一次；macOS activate 重建窗口时避免 ipcMain.handle 重复注册抛错 */
+  private ipcHandlersInstalled = false
+
   private setupIpcHandlers(): void {
+    if (this.ipcHandlersInstalled) return
+    this.ipcHandlersInstalled = true
     // ============== HTTP 请求处理器（已加 SSRF 白名单 + 入参校验） ==============
     ipcMain.handle('http:get', async (_event, { url, params }) => {
       try {

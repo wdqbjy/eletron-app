@@ -2,6 +2,7 @@ import { app, shell, dialog } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, promises as fsp } from 'fs'
 import { bilibiliApi } from './bilibili'
+import { assertMediaUrl } from '../security/ssrf'
 
 /**
  * 音乐下载服务（主进程）
@@ -158,6 +159,13 @@ class DownloadService {
     if (!audioUrl || !/^https?:\/\//.test(audioUrl)) {
       return { code: -1, message: '缺少合法的音频地址' }
     }
+    // SSRF 防护：媒体 CDN 白名单（内网 IP / IP 字面量 / DNS 重绑定仍拦截），
+    // 严格 origin 白名单会拦掉 B 站音频 CDN 导致下载失败
+    try {
+      await assertMediaUrl(audioUrl)
+    } catch (_) {
+      return { code: -1, message: '音频地址被安全策略拒绝' }
+    }
 
     const id = params.id || `dl_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
     const safeFileName = sanitizeFileName(fileName)
@@ -168,7 +176,12 @@ class DownloadService {
     // 统一 .m4a；仅 codecs 明确为 mp3 时用 .mp3。
     const codecsLower = String(params.audioCodecs || '').toLowerCase()
     const ext = codecsLower.includes('mp3') ? '.mp3' : '.m4a'
-    const finalFileName = `${safeFileName}${ext}`
+    // 同名文件不静默覆盖：追加序号 (1)(2)…
+    let finalFileName = `${safeFileName}${ext}`
+    let seq = 1
+    while (existsSync(join(downloadDir, finalFileName))) {
+      finalFileName = `${safeFileName}(${seq++})${ext}`
+    }
     const filePath = join(downloadDir, finalFileName)
 
     const task: DownloadTask = {

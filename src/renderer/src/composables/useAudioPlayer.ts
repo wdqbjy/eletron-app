@@ -18,6 +18,8 @@ let existingListeners: Record<string, (e: any) => void> = {}
 /** 加载超时：网络 stall / 流地址无效时，避免播放器无限转圈 */
 let loadingTimer: ReturnType<typeof setTimeout> | null = null
 const LOAD_TIMEOUT_MS = 12000
+/** 连续自动跳曲计数：流不可用时自动切下一首，连续 3 次即停（防整队失效连环跳） */
+let errorAutoSkip = 0
 
 function clearLoadingTimer() {
   if (loadingTimer) {
@@ -156,6 +158,9 @@ export function buildEpisodes(music: RecommendedMusic, pages: Array<{ cid: numbe
   }))
 }
 
+/** 并发令牌：每次 playMusic 自增（模块级，跨组件实例共享）；快速连点时旧请求过期结果直接丢弃 */
+let playSeq = 0
+
 export function useAudioPlayer() {
   const player = usePlayerStore()
   const settings = useSettingsStore()
@@ -172,8 +177,8 @@ export function useAudioPlayer() {
       loadstart: () => {
         clearLoadingTimer()
       },
-      stalling: () => {
-        // 网络缓冲中：不立即结束加载态，交给超时兜底
+      stalled: () => {
+        // 网络缓冲中：不立即结束加载态，交给超时兜底（标准事件名为 stalled，stalling 不存在）
       },
       waiting: () => {
         // 等待数据：同上
@@ -191,6 +196,8 @@ export function useAudioPlayer() {
         clearLoadingTimer()
         player.setIsLoading(false)
         player.setBuffered(100)
+        // 成功可播，重置连续失败计数
+        errorAutoSkip = 0
       },
       ended: () => {
         // 按播放模式自动切下一首；无可切则停止
@@ -210,7 +217,22 @@ export function useAudioPlayer() {
         player.setIsLoading(false)
         const code = e?.target?.error?.code
         console.error('[Player] 音频加载失败 code=', code, 'src=', audio.src)
-        player.setAudioError('音频加载失败（' + (code ?? '未知错误') + '），可能无可用音轨或网络受限')
+        // 体验兜底：流不可用（PCDN 节点 403 等）时自动切下一首；
+        // 连续失败 3 次即停，避免整队失效时连环跳完整列表
+        player.setAudioError('音频加载失败（' + (code ?? '未知错误') + '），正在尝试下一首…')
+        if (errorAutoSkip >= 3) return
+        errorAutoSkip++
+        const seqAtError = playSeq
+        const list = currentPlayList()
+        const nextIndex = getNextMusicIndex(list, player.playMode, player.current)
+        const next = musicAt(list, nextIndex)
+        // 队列只有当前这一首时 next===current，跳了还是失败，不再自动跳
+        if (next && next.bvid !== player.current?.bvid) {
+          setTimeout(() => {
+            if (playSeq !== seqAtError) return // 用户已手动切歌，放弃自动跳
+            playMusic(next, player.queue.length > 1 ? { queue: player.queue } : undefined)
+          }, 500)
+        }
       }
     }
     Object.entries(listeners).forEach(([event, handler]) => audio.addEventListener(event, handler))
@@ -219,6 +241,13 @@ export function useAudioPlayer() {
 
   async function playMusic(music: RecommendedMusic, context?: { queue?: RecommendedMusic[] }): Promise<void> {
     clearLoadingTimer()
+    // 无 bvid 的曲目（历史脏数据/异常项）无法走取流链路，直接提示而非卡在加载态
+    if (!music?.bvid) {
+      player.setIsLoading(false)
+      player.setAudioError('该曲目缺少稿件标识（bvid），无法播放')
+      return
+    }
+    const mySeq = ++playSeq
     try {
       if (!getAudio().paused) getAudio().pause()
     } catch (_) {}
@@ -274,9 +303,12 @@ export function useAudioPlayer() {
         // current 携带正确的分P cid/标题/时长，切歌才能按 cid 精确定位
         player.setCurrent(target)
       } else {
-        // 单曲或歌单模式
-        player.setQueueIsEpisodes(false)
-        player.setCurrentSeries(null)
+        // 单曲或歌单模式；携带显式队列=在既有队列内切歌，保留合集标记避免队列面板标题/「集」计数丢失
+        const keepEpisodes = !!(context?.queue && context.queue.length && player.queueIsEpisodes)
+        if (!keepEpisodes) {
+          player.setQueueIsEpisodes(false)
+          player.setCurrentSeries(null)
+        }
         if (context?.queue && context.queue.length) {
           // 显式队列（歌单/队列面板点歌）：直接用该队列
           player.setQueue(context.queue)
@@ -308,6 +340,9 @@ export function useAudioPlayer() {
       return
     }
     console.log('[Player] 实际播放地址(截断):', audioSrc.slice(0, 90) + '...')
+
+    // 已被更新的播放请求取代（快速连点）：丢弃过期结果，避免慢响应覆盖当前曲目
+    if (mySeq !== playSeq) return
 
     bindListeners(music)
     // 看门狗：超过阈值仍没出 loadedmetadata/canplaythrough/error → 超时兜底

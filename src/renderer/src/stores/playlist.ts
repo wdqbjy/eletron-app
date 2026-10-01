@@ -87,7 +87,17 @@ export const usePlaylistStore = defineStore('playlist', {
     init() {
       const loaded = loadFromStorage()
       if (loaded.length) {
+        // 存量清洗：早期版本可能存入无 bvid 的收藏音频项（永远无法播放），
+        // 启动时统一剔除并落盘，避免污染歌单/播放队列
+        let dirty = false
+        for (const pl of loaded) {
+          if (pl.songs?.some((s) => !s.bvid)) {
+            pl.songs = pl.songs.filter((s) => s.bvid)
+            dirty = true
+          }
+        }
         this.playlists = loaded
+        if (dirty) persist(this.playlists)
       } else {
         this.playlists = [
           {
@@ -172,11 +182,13 @@ export const usePlaylistStore = defineStore('playlist', {
       this.persist()
       return true
     },
-    /** 从歌单移除一首（收藏夹也允许单曲移除）；封面同步回退到新的第一首 */
-    removeFromPlaylist(musicBvid: string, playlistId: string) {
+    /** 从歌单移除一首；传 cid 时按 bvid+cid 精确移除（多P歌单只删该分P） */
+    removeFromPlaylist(musicBvid: string, playlistId: string, cid?: number) {
       const pl = this.playlists.find((p) => p.id === playlistId)
       if (!pl) return
-      pl.songs = pl.songs.filter((s) => s.bvid !== musicBvid)
+      pl.songs = pl.songs.filter((s) =>
+        cid != null ? !(s.bvid === musicBvid && (s.cid ?? null) === cid) : s.bvid !== musicBvid
+      )
       pl.cover = pl.songs[0]?.cover || ''
       this.persist()
     },
@@ -302,7 +314,7 @@ export const usePlaylistStore = defineStore('playlist', {
       return { total: folders.length, added }
     },
 
-    /** 收藏 media 项 → 本地曲目并追加（过滤失效/追更/电影，按 bvid 或 favId+favType 去重）；返回新增数 */
+    /** 收藏 media 项 → 本地曲目并追加（过滤失效/追更/电影，按 bvid 去重）；返回新增数 */
     appendFavMedias(pl: Playlist, medias: BiliFavMedia[]): number {
       let added = 0
       for (const item of medias) {
@@ -311,13 +323,11 @@ export const usePlaylistStore = defineStore('playlist', {
         if (item.attr && item.attr !== 0) continue
         // 2=视频稿件 12=音频；跳过追更合集(21)与电影(24)
         if (item.type === 21 || item.type === 24) continue
+        // 必须有 bvid：播放链路 getMusicInfo/playurl 全依赖 bvid，
+        // 无 bvid 的纯音频(type 12)入库后永远无法播放，还会污染队列
         const bvid = item.bvid || item.bv_id || ''
-        if (!bvid && !item.id) continue
-        const exists = pl.songs.some(
-          (m) =>
-            (bvid && m.bvid === bvid) ||
-            (!bvid && m.favId === item.id && m.favType === item.type)
-        )
+        if (!bvid) continue
+        const exists = pl.songs.some((m) => m.bvid === bvid)
         if (exists) continue
         pl.songs.push({
           bvid,
