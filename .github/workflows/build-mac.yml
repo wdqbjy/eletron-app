@@ -28,6 +28,24 @@ jobs:
       - name: Build macOS DMG (x64 + arm64)
         run: pnpm run build:mac -- --publish never --x64 --arm64
 
+      # 真机自检：在 macOS 跑机上启动打包出的应用，截图供人工确认运行效果
+      - name: Smoke test (launch app + screenshot)
+        run: |
+          APP=$(ls -d dist-new/mac-arm64/electron-app.app 2>/dev/null || ls -d dist-new/mac/electron-app.app)
+          echo "Launching: $APP"
+          open "$APP"
+          sleep 20
+          screencapture -x app-on-mac.png
+          ls -la app-on-mac.png
+          pkill -f electron-app || true
+
+      - name: Upload screenshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-screenshot
+          path: app-on-mac.png
+          if-no-files-found: warn
+
       - name: Upload DMG artifacts
         uses: actions/upload-artifact@v4
         with:
