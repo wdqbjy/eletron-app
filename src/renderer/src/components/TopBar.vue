@@ -50,7 +50,7 @@
         <span class="login-text">{{ userStore.userInfo?.uname || '已登录' }}</span>
       </button>
 
-      <!-- 窗口控制（自定义标题栏；可在「我的-窗口设置」关闭，macOS 使用系统交通灯） -->
+      <!-- 窗口控制（自定义标题栏；可在「我的-窗口设置」关闭） -->
       <div v-if="showWindowControls" class="window-controls">
         <button class="control-btn minimize" @click="handleMinimize" title="最小化">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
@@ -266,13 +266,9 @@ const theme = computed(() => themeStore.theme)
 const themeLabel = computed(() => (theme.value === 'dark' ? '切换到浅色模式' : '切换到深色模式'))
 const toggleTheme = (): void => themeStore.toggle()
 
-// 窗口控制按钮：设置开关 + macOS 下隐藏（系统交通灯）
-const isMac = computed(
-  () => /mac/i.test(navigator.platform || '') || /mac os x/i.test(navigator.userAgent)
-)
-const showWindowControls = computed(
-  () => !isMac.value && settingsStore.windowControlsEnabled !== false
-)
+// 窗口控制按钮：仅受设置开关控制（mac 上主进程 frame:false 同样没有系统交通灯，
+// 必须显示自定义按钮，否则无法最小化/最大化/关闭）
+const showWindowControls = computed(() => settingsStore.windowControlsEnabled !== false)
 
 // —— 窗口控制 ——
 const checkMaximized = async (): Promise<void> => {

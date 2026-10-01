@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, safeStorage, protocol, net } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, safeStorage, protocol, net, Menu } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -956,6 +956,55 @@ class ElectronMyApp {
 
   public init(): void {
     app.whenReady().then(async () => {
+      // ============== 生产环境封死 DevTools（F12 / Ctrl+Shift+I / Cmd+Opt+I / 菜单入口） ==============
+      // 开发环境不受影响；打包版里任何途径打开 DevTools 都会被立即关闭
+      if (!is.dev) {
+        app.on('web-contents-created', (_event, wc) => {
+          wc.on('before-input-event', (e, input) => {
+            if (
+              input.type === 'keyDown' &&
+              (input.code === 'F12' ||
+                (input.control && input.shift && input.code === 'KeyI') ||
+                (input.meta && input.alt && input.code === 'KeyI'))
+            ) {
+              e.preventDefault()
+            }
+          })
+          wc.on('devtools-opened', () => wc.closeDevTools())
+        })
+        // 默认菜单的 View 里有 Toggle Developer Tools，必须替换：
+        // - macOS 保留最小菜单（Cmd+C/V 等编辑快捷键依赖 Edit 菜单角色，不能直接置空）
+        // - Windows/Linux 编辑快捷键由 Chromium 原生处理，直接移除整个菜单
+        if (process.platform === 'darwin') {
+          Menu.setApplicationMenu(
+            Menu.buildFromTemplate([
+              {
+                label: app.name,
+                submenu: [{ role: 'about' }, { type: 'separator' }, { role: 'quit' }]
+              },
+              {
+                label: 'Edit',
+                submenu: [
+                  { role: 'undo' },
+                  { role: 'redo' },
+                  { type: 'separator' },
+                  { role: 'cut' },
+                  { role: 'copy' },
+                  { role: 'paste' },
+                  { role: 'selectAll' }
+                ]
+              },
+              {
+                label: 'Window',
+                submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'close' }]
+              }
+            ])
+          )
+        } else {
+          Menu.setApplicationMenu(null)
+        }
+      }
+
       installBiliAudioProtocol()
       // 启动时从 JSON 文件 + Electron session 恢复 B 站登录态，
       // 之后所有 B 站请求（推荐/搜索等）经拦截器自动带登录 Cookie。

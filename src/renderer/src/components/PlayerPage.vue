@@ -24,12 +24,8 @@ const { togglePlayPause, playPrevious, playNext, seekToTime } = useAudioPlayer()
 // 窗口控制
 const winIpc = window as any
 const isMaximized = ref(false)
-// 与 TopBar 同一开关；macOS 用系统交通灯
-const showWindowControls = computed(
-  () =>
-    !(/mac/i.test(navigator.platform || '') || /mac os x/i.test(navigator.userAgent)) &&
-    settings.windowControlsEnabled !== false
-)
+// 与 TopBar 同一开关（mac 上主进程 frame:false 同样没有系统交通灯，需显示自定义按钮）
+const showWindowControls = computed(() => settings.windowControlsEnabled !== false)
 
 const checkMaximized = async (): Promise<void> => {
   if (winIpc.electronMyAPI) {
